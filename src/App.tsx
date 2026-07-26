@@ -26,12 +26,19 @@ import { radii } from './lib/designTokens'
 import { isEventSaleOpen } from './lib/eventLifecycle'
 import { DEFAULT_PRICE_TIERS, MAX_PHOTOS_PER_ORDER, getTierForCount } from './lib/pricing'
 import { isLiveMode, runtimeConfig } from './lib/runtimeConfig'
-import { fetchEventCatalog, type EventCatalog } from './services/catalog'
+import { fetchAlbums, fetchEventCatalog, type AlbumSummary, type EventCatalog } from './services/catalog'
 
 function StorefrontApp() {
-  const [catalog, setCatalog] = useState<EventCatalog>({ event: mockEvent, categories: mockCategories, tiers: DEFAULT_PRICE_TIERS, photos: mockPhotos })
+  const [catalog, setCatalog] = useState<EventCatalog>({
+    event: mockEvent,
+    categories: isLiveMode ? [] : mockCategories,
+    tiers: DEFAULT_PRICE_TIERS,
+    photos: isLiveMode ? [] : mockPhotos,
+  })
+  const [albums, setAlbums] = useState<AlbumSummary[]>([])
+  const [catalogLoading, setCatalogLoading] = useState(isLiveMode)
   const [catalogError, setCatalogError] = useState('')
-  const [category, setCategory] = useState('ทั้งหมด')
+  const [category, setCategory] = useState(mockCategories[0])
   const [query, setQuery] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<number | string>>(new Set())
   const [preview, setPreview] = useState<Photo | null>(null)
@@ -49,9 +56,29 @@ function StorefrontApp() {
   useEffect(() => {
     if (!isLiveMode) return
     let cancelled = false
-    fetchEventCatalog(runtimeConfig.eventShareToken)
-      .then((next) => { if (!cancelled) setCatalog(next) })
-      .catch((error) => { if (!cancelled) setCatalogError(error instanceof Error ? error.message : 'โหลดอัลบั้มไม่สำเร็จ') })
+    const load = async () => {
+      setCatalogLoading(true)
+      setCatalogError('')
+      try {
+        const nextAlbums = await fetchAlbums()
+        if (cancelled) return
+        setAlbums(nextAlbums)
+        const requestedToken = runtimeConfig.eventShareToken || nextAlbums[0]?.shareToken || ''
+        if (!requestedToken) {
+          setCatalogError('ยังไม่มีอัลบั้มที่เปิดให้แสดง กรุณาสร้างอัลบั้มจากหน้าแอดมิน')
+          return
+        }
+        const next = await fetchEventCatalog(requestedToken)
+        if (cancelled) return
+        setCatalog(next)
+        setCategory(next.categories[0] || 'ทั้งหมด')
+      } catch (error) {
+        if (!cancelled) setCatalogError(error instanceof Error ? error.message : 'โหลดอัลบั้มไม่สำเร็จ')
+      } finally {
+        if (!cancelled) setCatalogLoading(false)
+      }
+    }
+    void load()
     return () => { cancelled = true }
   }, [])
 
@@ -63,6 +90,7 @@ function StorefrontApp() {
   const categories = catalog.categories
   const photos = catalog.photos
   const priceTiers = catalog.tiers.length ? catalog.tiers : DEFAULT_PRICE_TIERS
+  const heroImage = photos[0]?.src || albums.find((album) => album.shareToken === event.shareToken)?.coverUrl || '/photos/photo-hero.svg'
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -162,7 +190,8 @@ function StorefrontApp() {
       </header>
 
       <main id="top">
-        {catalogError && <div className="mx-auto mt-5 max-w-5xl border-[3px] border-marker bg-[#ffe4e4] px-5 py-3 font-body text-xl text-marker shadow-hard" style={{ borderRadius: radii.wobblyMd }}>โหลดข้อมูลจริงไม่สำเร็จ: {catalogError} · กำลังแสดงข้อมูลตัวอย่าง</div>}
+        {catalogLoading && <div className="mx-auto mt-5 max-w-5xl border-[3px] border-pencil bg-sticky px-5 py-3 font-body text-xl shadow-hard" style={{ borderRadius: radii.wobblyMd }}>กำลังโหลดอัลบั้มจากระบบ…</div>}
+        {catalogError && <div className="mx-auto mt-5 max-w-5xl border-[3px] border-marker bg-[#ffe4e4] px-5 py-3 font-body text-xl text-marker shadow-hard" style={{ borderRadius: radii.wobblyMd }}>{catalogError}</div>}
         <section id="event" className="relative mx-auto grid max-w-5xl gap-12 px-6 py-14 md:min-h-[calc(100vh-5rem)] md:grid-cols-[1.08fr_.92fr] md:items-center md:py-16">
           <div className="relative z-10">
             <span className="sticky-tag inline-block -rotate-2">สแกน QR แล้วเลือกรูปได้เลย</span>
@@ -201,7 +230,7 @@ function StorefrontApp() {
           <div className="relative mx-auto w-full max-w-[390px] md:max-w-[430px]">
             <div className="absolute -left-5 -top-8 hidden h-20 w-20 animate-floaty border-[3px] border-pencil bg-marker md:block" style={{ borderRadius: radii.blob }} />
             <SketchCard decoration="tape" className="rotate-1 bg-sticky p-4 shadow-hard-lg transition-transform hover:-rotate-1">
-              <img src="/photos/photo-hero.svg" alt="ภาพตัวอย่างงานกีฬาสี" className="aspect-[4/5] w-full object-cover" style={{ borderRadius: radii.wobblyMd }} />
+              <img src={heroImage} alt={event.title} className="aspect-[4/5] w-full object-cover" style={{ borderRadius: radii.wobblyMd }} />
               <div className="p-4 text-center">
                 <p className="font-heading text-3xl font-bold">{event.title}</p>
                 <p className="mt-1 font-body text-xl text-pencil/65">{event.subtitle}</p>
@@ -212,6 +241,47 @@ function StorefrontApp() {
             </div>
           </div>
         </section>
+
+        {isLiveMode && (
+          <section id="albums" className="border-y-2 border-dashed border-pencil/35 bg-white/65 py-16">
+            <div className="mx-auto max-w-5xl px-6">
+              <div className="mb-9">
+                <p className="font-body text-xl text-marker">สร้างและจัดการจากหน้าแอดมิน</p>
+                <h2 className="font-heading text-5xl font-bold md:text-6xl">อัลบั้มทั้งหมด</h2>
+                <p className="mt-2 font-body text-xl text-pencil/65">อัลบั้มที่เปิดใช้งานจะปรากฏตรงนี้โดยอัตโนมัติ</p>
+              </div>
+              {albums.length ? (
+                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                  {albums.map((album, index) => (
+                    <a
+                      key={album.id}
+                      href={`/?event=${encodeURIComponent(album.shareToken)}#gallery`}
+                      className={`${index % 2 ? 'rotate-[.5deg]' : '-rotate-[.5deg]'} block border-[3px] border-pencil bg-white p-3 shadow-hard transition-transform hover:rotate-0`}
+                      style={{ borderRadius: radii.wobblyMd }}
+                    >
+                      {album.coverUrl ? (
+                        <img src={album.coverUrl} alt={album.title} className="aspect-[4/3] w-full object-cover" style={{ borderRadius: radii.wobblySm }} />
+                      ) : (
+                        <div className="grid aspect-[4/3] place-items-center bg-muted" style={{ borderRadius: radii.wobblySm }}><Images size={48} strokeWidth={2.3} /></div>
+                      )}
+                      <div className="p-3">
+                        <h3 className="font-heading text-3xl font-bold">{album.title}</h3>
+                        <p className="mt-1 font-body text-lg text-pencil/65">{[album.eventDate, album.venue].filter(Boolean).join(' · ') || 'ยังไม่ระบุวันที่และสถานที่'}</p>
+                        <p className="mt-3 font-body text-lg font-bold text-pen">{album.photoCount.toLocaleString('th-TH')} รูป · เปิดอัลบั้ม</p>
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              ) : !catalogLoading && (
+                <SketchCard className="p-8 text-center">
+                  <Images className="mx-auto" size={46} strokeWidth={2.4} />
+                  <p className="mt-3 font-heading text-3xl font-bold">ยังไม่มีอัลบั้มบนหน้าเว็บไซต์</p>
+                  <a href="/?admin=1" className="mt-3 inline-block font-body text-xl font-bold text-pen underline">ไปสร้างอัลบั้มที่หน้าแอดมิน</a>
+                </SketchCard>
+              )}
+            </div>
+          </section>
+        )}
 
         <section id="how" className="relative border-y-2 border-dashed border-pencil/35 bg-muted/55 py-20">
           <div className="mx-auto max-w-5xl px-6">

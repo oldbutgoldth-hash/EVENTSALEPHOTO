@@ -191,7 +191,7 @@ begin
   returning id into v_order_id;
 
   insert into public.event_photo_order_items(order_id, photo_id)
-  select v_order_id, distinct selected_id from unnest(p_photo_ids) selected_id;
+  select distinct v_order_id, selected_id from unnest(p_photo_ids) selected_id;
 
   return query
   select o.id, o.order_number, o.public_token, o.amount_satang

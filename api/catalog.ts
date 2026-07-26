@@ -19,11 +19,42 @@ type EventRow = {
 type CategoryRow = { name: string }
 type TierRow = { photo_count: number; price_satang: number; label: string | null }
 type PhotoRow = { id: string; photo_code: string; category: string | null; preview_url: string; width: number | null; height: number | null }
+type AlbumPhotoRow = { id: string; preview_url: string }
 
 const activeStatuses = new Set(['active', 'reactivated', 'published'])
 
 export default async function handler(req: ApiRequest, res: ApiResponse) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' })
+  if (queryValue(req.query?.list) === '1') {
+    try {
+      const selection = 'id,title,event_date,venue,description,share_token,status,sale_starts_at,sale_ends_at'
+      const events = await supabaseRest<EventRow[]>(
+        `event_photo_events?status=in.(active,reactivated,published,expired,closed)&select=${selection}&order=event_date.desc.nullslast,created_at.desc&limit=30`,
+      )
+      const albums = await Promise.all(events.map(async (event) => {
+        const photos = await supabaseRest<AlbumPhotoRow[]>(
+          `event_photo_photos?event_id=eq.${event.id}&is_visible=eq.true&select=id,preview_url&order=sort_order.asc,created_at.asc&limit=5000`,
+        )
+        return {
+          id: event.id,
+          title: event.title,
+          eventDate: event.event_date,
+          venue: event.venue,
+          description: event.description,
+          shareToken: event.share_token,
+          status: event.status,
+          saleStartsAt: event.sale_starts_at,
+          saleEndsAt: event.sale_ends_at,
+          photoCount: photos.length,
+          coverUrl: photos[0]?.preview_url || null,
+        }
+      }))
+      res.setHeader('cache-control', 'public, max-age=20, s-maxage=30')
+      return res.status(200).json({ albums })
+    } catch (error) {
+      return res.status(500).json({ error: error instanceof Error ? error.message : 'ALBUM_LIST_FAILED' })
+    }
+  }
   const shareToken = queryValue(req.query?.shareToken)
   if (!shareToken) return res.status(400).json({ error: 'SHARE_TOKEN_REQUIRED' })
 

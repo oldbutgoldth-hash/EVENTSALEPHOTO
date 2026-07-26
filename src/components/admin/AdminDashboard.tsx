@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Archive,
   ArrowLeft,
@@ -25,7 +25,7 @@ import {
 } from 'lucide-react'
 import { DEFAULT_PRICE_TIERS, formatBaht } from '../../lib/pricing'
 import { addDaysToLocalDateTime, addHoursToLocalDateTime, formatThaiDateTime, localDateTimeToIso, toDateTimeLocal, type EventLifecycleStatus } from '../../lib/eventLifecycle'
-import { saveEvent } from '../../services/admin'
+import { deleteCategory, deleteEvent, renameCategory, saveEvent } from '../../services/admin'
 import { reviewPayment } from '../../services/payment'
 import { BrandLogo } from '../BrandLogo'
 import { radii } from '../../lib/designTokens'
@@ -57,6 +57,28 @@ type AdminOrder = {
   reviewNote: string | null
 }
 
+type AdminEvent = {
+  id: string
+  title: string
+  slug: string
+  share_token: string
+  event_date: string | null
+  venue: string | null
+  status: EventLifecycleStatus
+  sale_starts_at: string | null
+  sale_ends_at: string | null
+  original_purge_at: string | null
+  originals_purged_at: string | null
+  contact_line_url: string | null
+  contact_phone: string | null
+}
+
+type AdminCategory = {
+  id: string
+  name: string
+  sort_order: number
+}
+
 const mockOrders: AdminOrder[] = [
   { id: 'demo-142', orderNumber: 'EP-2569-0142', count: 3, total: 100, status: 'ชำระแล้ว', paymentStatus: 'paid', slipUrl: null, slipUploadedAt: null, reviewNote: null },
   { id: 'demo-141', orderNumber: 'EP-2569-0141', count: 10, total: 250, status: 'รอตรวจสลิป', paymentStatus: 'under_review', slipUrl: null, slipUploadedAt: new Date().toISOString(), reviewNote: null },
@@ -86,12 +108,15 @@ export function AdminDashboard() {
   const [originalsPurgedAt, setOriginalsPurgedAt] = useState('')
   const [eventId, setEventId] = useState('')
   const [shareToken, setShareToken] = useState(runtimeConfig.eventShareToken)
+  const [adminEvents, setAdminEvents] = useState<AdminEvent[]>([])
+  const [adminCategories, setAdminCategories] = useState<AdminCategory[]>([])
+  const [loadingEventId, setLoadingEventId] = useState('')
   const [uploads, setUploads] = useState<UploadItem[]>([])
   const [notice, setNotice] = useState('')
   const [saving, setSaving] = useState(false)
-  const [dashboardOrders, setDashboardOrders] = useState(mockOrders)
-  const [dashboardPhotoCount, setDashboardPhotoCount] = useState(128)
-  const [dashboardRevenue, setDashboardRevenue] = useState(430)
+  const [dashboardOrders, setDashboardOrders] = useState(runtimeConfig.dataMode === 'live' ? [] : mockOrders)
+  const [dashboardPhotoCount, setDashboardPhotoCount] = useState(runtimeConfig.dataMode === 'live' ? 0 : 128)
+  const [dashboardRevenue, setDashboardRevenue] = useState(runtimeConfig.dataMode === 'live' ? 0 : 430)
   const [reviewingOrderId, setReviewingOrderId] = useState('')
 
   const eventUrl = `${runtimeConfig.siteUrl}/?event=${encodeURIComponent(shareToken || eventSlug)}`
@@ -106,37 +131,61 @@ export function AdminDashboard() {
       .finally(() => setCheckingSession(false))
   }, [])
 
-  useEffect(() => {
-    if (runtimeConfig.dataMode !== 'live' || !authenticated) return
-    fetch('/api/admin-dashboard', { credentials: 'include' })
-      .then((response) => response.json())
-      .then((payload: {
-        event?: { id: string; title: string; slug: string; share_token: string; event_date: string | null; venue: string | null; status?: EventLifecycleStatus; sale_starts_at?: string | null; sale_ends_at?: string | null; original_purge_at?: string | null; originals_purged_at?: string | null; contact_line_url?: string | null; contact_phone?: string | null } | null
+  const loadDashboard = useCallback(async (selectedEventId = '') => {
+    if (runtimeConfig.dataMode !== 'live') return
+    setLoadingEventId(selectedEventId || 'latest')
+    try {
+      const suffix = selectedEventId ? `?eventId=${encodeURIComponent(selectedEventId)}` : ''
+      const response = await fetch(`/api/admin-dashboard${suffix}`, { credentials: 'include', cache: 'no-store' })
+      const payload = (await response.json()) as {
+        event?: AdminEvent | null
+        events?: AdminEvent[]
+        categories?: AdminCategory[]
         photoCount?: number
         revenue?: number
         orders?: AdminOrder[]
-      }) => {
-        if (payload.event) {
-          setEventId(payload.event.id)
-          setEventTitle(payload.event.title)
-          setEventSlug(payload.event.slug)
-          setShareToken(payload.event.share_token)
-          setEventDate(payload.event.event_date || '')
-          setVenue(payload.event.venue || '')
-          setEventStatus(payload.event.status || 'active')
-          setSaleStartsAt(toDateTimeLocal(payload.event.sale_starts_at || new Date()))
-          setSaleEndsAt(toDateTimeLocal(payload.event.sale_ends_at || addDaysToLocalDateTime(defaultSaleStart, 7)))
-          setOriginalPurgeAt(toDateTimeLocal(payload.event.original_purge_at || addDaysToLocalDateTime(defaultSaleStart, 30)))
-          setOriginalsPurgedAt(payload.event.originals_purged_at || '')
-          setContactLineUrl(payload.event.contact_line_url || '')
-          setContactPhone(payload.event.contact_phone || '')
-        }
-        setDashboardPhotoCount(payload.photoCount || 0)
-        setDashboardRevenue(payload.revenue || 0)
-        if (payload.orders) setDashboardOrders(payload.orders)
-      })
-      .catch(() => undefined)
-  }, [authenticated])
+        error?: string
+      }
+      if (!response.ok) throw new Error(payload.error || 'โหลดข้อมูลหลังบ้านไม่สำเร็จ')
+      setAdminEvents(payload.events || [])
+      setAdminCategories(payload.categories || [])
+      if (payload.event) {
+        setEventId(payload.event.id)
+        setEventTitle(payload.event.title)
+        setEventSlug(payload.event.slug)
+        setShareToken(payload.event.share_token)
+        setEventDate(payload.event.event_date || '')
+        setVenue(payload.event.venue || '')
+        setEventStatus(payload.event.status || 'active')
+        setSaleStartsAt(toDateTimeLocal(payload.event.sale_starts_at || new Date()))
+        setSaleEndsAt(toDateTimeLocal(payload.event.sale_ends_at || addDaysToLocalDateTime(defaultSaleStart, 7)))
+        setOriginalPurgeAt(toDateTimeLocal(payload.event.original_purge_at || addDaysToLocalDateTime(defaultSaleStart, 30)))
+        setOriginalsPurgedAt(payload.event.originals_purged_at || '')
+        setContactLineUrl(payload.event.contact_line_url || '')
+        setContactPhone(payload.event.contact_phone || '')
+      } else {
+        setEventId('')
+        setEventTitle('')
+        setEventSlug('')
+        setShareToken('')
+        setEventDate('')
+        setVenue('')
+        setAdminCategories([])
+      }
+      setDashboardPhotoCount(payload.photoCount || 0)
+      setDashboardRevenue(payload.revenue || 0)
+      setDashboardOrders(payload.orders || [])
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'โหลดข้อมูลหลังบ้านไม่สำเร็จ')
+    } finally {
+      setLoadingEventId('')
+    }
+  }, [])
+
+  useEffect(() => {
+    if (runtimeConfig.dataMode !== 'live' || !authenticated) return
+    void loadDashboard()
+  }, [authenticated, loadDashboard])
 
   const login = async () => {
     setLoginError('')
@@ -155,6 +204,73 @@ export function AdminDashboard() {
   const logout = async () => {
     await fetch('/api/admin-logout', { method: 'POST', credentials: 'include' })
     setAuthenticated(false)
+  }
+
+  const startNewEvent = () => {
+    const start = toDateTimeLocal(new Date())
+    setEventId('')
+    setEventTitle('')
+    setEventSlug('')
+    setShareToken('')
+    setEventDate('')
+    setVenue('')
+    setCategory('')
+    setEventStatus('active')
+    setSaleStartsAt(start)
+    setSaleEndsAt(addDaysToLocalDateTime(start, 7))
+    setOriginalPurgeAt(addDaysToLocalDateTime(start, 30))
+    setOriginalsPurgedAt('')
+    setAdminCategories([])
+    setDashboardOrders([])
+    setDashboardPhotoCount(0)
+    setDashboardRevenue(0)
+    setUploads([])
+    setNotice('พร้อมสร้างอัลบั้มใหม่ กรอกข้อมูลแล้วกดบันทึกงาน')
+  }
+
+  const removeEvent = async (item: AdminEvent) => {
+    if (!window.confirm(`ต้องการลบอัลบั้ม “${item.title}” ใช่หรือไม่?\nหากมีคำสั่งซื้อ ระบบจะเก็บถาวรแทนเพื่อรักษาประวัติลูกค้า`)) return
+    setSaving(true)
+    setNotice('')
+    try {
+      const result = await deleteEvent(item.id)
+      setNotice(result.archived ? 'อัลบั้มมีคำสั่งซื้อ จึงถูกเก็บถาวรและซ่อนจากหน้าร้านแล้ว' : 'ลบอัลบั้มและไฟล์ที่เกี่ยวข้องแล้ว')
+      await loadDashboard()
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'ลบอัลบั้มไม่สำเร็จ')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const editCategory = async (item: AdminCategory) => {
+    if (!eventId) return
+    const name = window.prompt('แก้ไขชื่อหมวด', item.name)?.trim()
+    if (!name || name === item.name) return
+    setSaving(true)
+    try {
+      await renameCategory(eventId, item.id, name)
+      setNotice(`เปลี่ยนชื่อหมวดเป็น “${name}” แล้ว`)
+      await loadDashboard(eventId)
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'แก้ไขหมวดไม่สำเร็จ')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const removeCategory = async (item: AdminCategory) => {
+    if (!eventId || !window.confirm(`ลบหมวด “${item.name}” ใช่หรือไม่?\nรูปจะยังอยู่และย้ายไปหมวดไม่ระบุ`)) return
+    setSaving(true)
+    try {
+      await deleteCategory(eventId, item.id)
+      setNotice(`ลบหมวด “${item.name}” แล้ว รูปเดิมยังไม่ถูกลบ`)
+      await loadDashboard(eventId)
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'ลบหมวดไม่สำเร็จ')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const reviewOrder = async (order: AdminOrder, decision: 'approve' | 'reject') => {
@@ -216,6 +332,7 @@ export function AdminDashboard() {
       setEventId(saved.eventId)
       setShareToken(saved.shareToken)
       setNotice('บันทึกงาน ราคา และวงจรอัลบั้ม 7/30 วันใน Supabase แล้ว')
+      await loadDashboard(saved.eventId)
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'บันทึกงานไม่สำเร็จ')
     } finally {
@@ -364,11 +481,45 @@ export function AdminDashboard() {
 
       <main className="mx-auto max-w-6xl px-6 py-10">
         <div className="mb-10 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div><span className="sticky-tag inline-block -rotate-1">หลังบ้านเวอร์ชัน 1.2.0 · Album Lifecycle</span><h1 className="mt-4 font-heading text-5xl font-bold md:text-6xl">จัดการงานขายภาพ</h1></div>
+          <div><span className="sticky-tag inline-block -rotate-1">หลังบ้านเวอร์ชัน 1.3.4 · Album Manager</span><h1 className="mt-4 font-heading text-5xl font-bold md:text-6xl">จัดการงานขายภาพ</h1></div>
           <span className={`border-2 border-dashed border-pencil px-4 py-2 font-body text-lg ${runtimeConfig.dataMode === 'live' ? 'bg-[#d9f7df]' : 'bg-sticky'}`} style={{ borderRadius: radii.wobblySm }}>
             โหมด: {runtimeConfig.dataMode === 'live' ? 'LIVE เชื่อมระบบจริง' : 'DEMO ทดลองหน้าจอ'}
           </span>
         </div>
+
+        {runtimeConfig.dataMode === 'live' && (
+          <SketchCard decoration="tape" className="mb-10 p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="font-heading text-4xl font-bold">อัลบั้มทั้งหมด</h2>
+                <p className="font-body text-xl text-pencil/65">เลือกอัลบั้มเพื่อแก้ไข หรือสร้างอัลบั้มใหม่ รายการที่เปิดใช้งานจะขึ้นหน้าเว็บไซต์อัตโนมัติ</p>
+              </div>
+              <button type="button" onClick={startNewEvent} className="admin-mini-button !bg-[#d9f7df]"><ImageIcon size={19} /> สร้างอัลบั้มใหม่</button>
+            </div>
+            {adminEvents.length ? (
+              <div className="mt-5 grid gap-3 md:grid-cols-2">
+                {adminEvents.map((item) => (
+                  <article key={item.id} className={`border-[3px] p-4 ${eventId === item.id ? 'border-marker bg-[#fff4e8]' : 'border-pencil bg-white'}`} style={{ borderRadius: radii.wobblySm }}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="truncate font-heading text-2xl font-bold">{item.title}</h3>
+                        <p className="font-body text-base text-pencil/60">{item.event_date || 'ไม่ระบุวันที่'} · {item.status}</p>
+                      </div>
+                      <span className="shrink-0 border-2 border-dashed border-pencil bg-sticky px-2 py-1 font-body text-sm">{item.status}</span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button type="button" onClick={() => void loadDashboard(item.id)} disabled={loadingEventId === item.id} className="admin-mini-button"><Settings2 size={17} /> {loadingEventId === item.id ? 'กำลังโหลด…' : 'แก้ไข'}</button>
+                      <a href={`${runtimeConfig.siteUrl}/?event=${encodeURIComponent(item.share_token)}`} target="_blank" rel="noreferrer" className="admin-mini-button"><ExternalLink size={17} /> เปิดหน้าร้าน</a>
+                      <button type="button" onClick={() => void removeEvent(item)} disabled={saving} className="admin-mini-button !bg-[#ffe4e4]"><Trash2 size={17} /> ลบ/เก็บถาวร</button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-5 border-[3px] border-dashed border-pencil/40 bg-muted/35 p-7 text-center font-body text-xl" style={{ borderRadius: radii.wobblySm }}>ยังไม่มีอัลบั้ม กด “สร้างอัลบั้มใหม่” เพื่อเริ่มต้น</div>
+            )}
+          </SketchCard>
+        )}
 
         <section className="grid gap-5 sm:grid-cols-3">
           {[
@@ -394,7 +545,24 @@ export function AdminDashboard() {
               <label className="font-body text-lg sm:col-span-2">Share Token สำหรับ QR<input value={shareToken} onChange={(event) => setShareToken(event.target.value)} placeholder="ปล่อยว่างให้ระบบสุ่ม" className="admin-input" /></label>
               <label className="font-body text-lg">วันที่<input type="date" value={eventDate} onChange={(event) => setEventDate(event.target.value)} className="admin-input" /></label>
               <label className="font-body text-lg">สถานที่<input value={venue} onChange={(event) => setVenue(event.target.value)} className="admin-input" /></label>
-              <label className="font-body text-lg sm:col-span-2">หมวดสำหรับรูปชุดนี้<input value={category} onChange={(event) => setCategory(event.target.value)} className="admin-input" /></label>
+              <div className="sm:col-span-2">
+                <label className="font-body text-lg">หมวดสำหรับรูปชุดนี้
+                  <input value={category} onChange={(event) => setCategory(event.target.value)} list="event-category-options" placeholder="เช่น ขบวนพาเหรด หรือ สีแดง" className="admin-input" />
+                </label>
+                <datalist id="event-category-options">{adminCategories.map((item) => <option key={item.id} value={item.name} />)}</datalist>
+                <p className="mt-2 font-body text-base text-pencil/60">พิมพ์ชื่อใหม่เพื่อสร้างหมวดตอนบันทึก หรือเลือกหมวดเดิมสำหรับรูปที่จะอัปโหลด</p>
+                {adminCategories.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {adminCategories.map((item) => (
+                      <span key={item.id} className="inline-flex items-center gap-1 border-2 border-pencil bg-sticky px-2 py-1 font-body text-base" style={{ borderRadius: radii.wobblySm }}>
+                        {item.name}
+                        <button type="button" onClick={() => void editCategory(item)} className="grid h-7 w-7 place-items-center hover:bg-white" aria-label={`แก้ไขหมวด ${item.name}`}><Settings2 size={15} /></button>
+                        <button type="button" onClick={() => void removeCategory(item)} className="grid h-7 w-7 place-items-center text-marker hover:bg-white" aria-label={`ลบหมวด ${item.name}`}><Trash2 size={15} /></button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div className="sm:col-span-2 border-t-2 border-dashed border-pencil/35 pt-5">
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-2"><Clock3 size={25} strokeWidth={2.8} /><h3 className="font-heading text-3xl font-bold">อายุอัลบั้ม</h3></div>
