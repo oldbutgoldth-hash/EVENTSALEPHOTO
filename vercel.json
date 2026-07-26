@@ -23,6 +23,11 @@
     {
       "source": "/api/payment-slip-submit",
       "destination": "/api/payment-slip?action=submit"
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "query", "key": "event" }],
+      "destination": "/api/catalog?meta=1"
     }
   ],
   "crons": [

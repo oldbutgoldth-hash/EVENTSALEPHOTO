@@ -49,6 +49,10 @@ CRON_SECRET=ข้อความสุ่มยาวอย่างน้อ�
 # ไม่บังคับ — ถ้าไม่ใส่ ระบบจะข้ามการตรวจสลิปอัตโนมัติและใช้การตรวจด้วยมือเหมือนเดิม
 SLIPOK_API_KEY=API_KEY_จาก_slipok.com
 SLIPOK_BRANCH_ID=BRANCH_ID_จาก_slipok.com
+
+# ไม่บังคับ — ฟรี ถ้าไม่ใส่ ระบบจะข้ามการแจ้งเตือน Telegram (วิธีสร้างดูใน README)
+TELEGRAM_BOT_TOKEN=โทเคนบอทจาก_BotFather
+TELEGRAM_CHAT_ID=chat_id_ของคุณ
 ```
 
 ห้ามเติม `VITE_` หน้า Service Role Key, ImageKit Private Key, รหัสแอดมิน หรือ Session Secret เพราะค่าที่ขึ้นต้นด้วย `VITE_` จะถูกส่งไปที่เบราว์เซอร์

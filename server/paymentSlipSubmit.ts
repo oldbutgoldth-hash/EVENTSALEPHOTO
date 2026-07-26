@@ -1,8 +1,9 @@
 import crypto from 'node:crypto'
 import { queryValue, supabaseAdmin, supabaseRest, type ApiRequest, type ApiResponse } from './utils.js'
 import { verifySlipWithSlipOk } from './slipVerification.js'
+import { notifyTelegram } from './notify.js'
 
-type OrderRow = { id: string; payment_status: string; payment_slip_path: string | null; amount_satang: number }
+type OrderRow = { id: string; order_number: string; payment_status: string; payment_slip_path: string | null; amount_satang: number }
 const allowedTypes = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const maxSlipBytes = 6 * 1024 * 1024
 const autoRejectOutcomes = new Set(['duplicate', 'amount_mismatch', 'wrong_account'])
@@ -22,7 +23,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   ) return res.status(400).json({ error: 'INVALID_SLIP_SUBMISSION' })
 
   try {
-    const orders = await supabaseRest<OrderRow[]>(`event_photo_orders?public_token=eq.${encodeURIComponent(token)}&select=id,payment_status,payment_slip_path,amount_satang&limit=1`)
+    const orders = await supabaseRest<OrderRow[]>(`event_photo_orders?public_token=eq.${encodeURIComponent(token)}&select=id,order_number,payment_status,payment_slip_path,amount_satang&limit=1`)
     const order = orders[0]
     if (!order) return res.status(404).json({ error: 'ORDER_NOT_FOUND' })
     if (!body.path.startsWith(`${order.id}/`) || body.path.includes('..')) return res.status(403).json({ error: 'INVALID_SLIP_PATH' })
@@ -87,6 +88,14 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     if (order.payment_slip_path && order.payment_slip_path !== body.path) {
       await supabaseAdmin().storage.from('payment-slips').remove([order.payment_slip_path]).catch(() => undefined)
     }
+
+    const amountText = (order.amount_satang / 100).toFixed(2)
+    void notifyTelegram(
+      slipStatus === 'rejected'
+        ? `❌ สลิปถูกปฏิเสธอัตโนมัติ\nคำสั่งซื้อ ${order.order_number} · ยอด ${amountText} บาท\n${autoCheckNote || ''}`
+        : `🧾 มีสลิปใหม่รอตรวจ\nคำสั่งซื้อ ${order.order_number} · ยอด ${amountText} บาท\nเปิดหน้าแอดมินเพื่อตรวจสอบ`,
+    )
+
     if (slipStatus === 'rejected') {
       return res.status(200).json({ ok: true, autoRejected: true, reason: autoCheckNote })
     }

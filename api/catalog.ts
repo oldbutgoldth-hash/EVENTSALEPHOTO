@@ -1,4 +1,61 @@
-import { queryValue, supabaseRest, type ApiRequest, type ApiResponse } from '../server/utils.js'
+import { queryValue, siteUrl, supabaseRest, type ApiRequest, type ApiResponse } from '../server/utils.js'
+
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+// Crawlers (Facebook, LINE, etc.) don't run our client-side JS, so a shared
+// album link would otherwise show generic branding instead of that event's
+// title/cover photo. This fetches the already-built index.html and swaps in
+// per-album <title>/og:* tags before returning it — real visitors still get
+// the exact same working app underneath.
+async function renderShareMeta(req: ApiRequest, res: ApiResponse, shareToken: string): Promise<void> {
+  const fallback = async () => {
+    const html = await fetch(`${siteUrl(req)}/index.html`).then((r) => r.text())
+    res.setHeader('content-type', 'text/html; charset=utf-8')
+    res.send(html)
+  }
+  try {
+    const events = await supabaseRest<Array<{ id: string; title: string; description: string | null; status: string }>>(
+      `event_photo_events?share_token=eq.${encodeURIComponent(shareToken)}&select=id,title,description,status&limit=1`,
+    )
+    const event = events[0]
+    if (!event || event.status === 'draft') return fallback()
+
+    const photos = await supabaseRest<Array<{ preview_url: string }>>(
+      `event_photo_photos?event_id=eq.${event.id}&is_visible=eq.true&select=preview_url&order=sort_order.asc,created_at.asc&limit=1`,
+    )
+    const title = escapeHtml(event.title)
+    const description = escapeHtml(event.description || "ค้นหา เลือกซื้อ และดาวน์โหลดภาพกิจกรรมจาก KO'AKE Event Photo")
+    const coverUrl = photos[0]?.preview_url
+    const pageUrl = `${siteUrl(req)}/?event=${encodeURIComponent(shareToken)}`
+
+    let html = await fetch(`${siteUrl(req)}/index.html`).then((r) => r.text())
+    html = html.replace(/<title>.*?<\/title>/, '').replace(/<meta name="description"[^>]*>/, '')
+    const ogTags = [
+      `<title>${title} · KO’AKE Event Photo</title>`,
+      `<meta name="description" content="${description}" />`,
+      '<meta property="og:type" content="website" />',
+      "<meta property=\"og:site_name\" content=\"KO'AKE Event Photo\" />",
+      `<meta property="og:title" content="${title}" />`,
+      `<meta property="og:description" content="${description}" />`,
+      coverUrl ? `<meta property="og:image" content="${escapeHtml(coverUrl)}" />` : '',
+      `<meta property="og:url" content="${pageUrl}" />`,
+      '<meta name="twitter:card" content="summary_large_image" />',
+      `<meta name="twitter:title" content="${title}" />`,
+      `<meta name="twitter:description" content="${description}" />`,
+      coverUrl ? `<meta name="twitter:image" content="${escapeHtml(coverUrl)}" />` : '',
+    ].join('\n    ')
+    html = html.replace('</head>', `${ogTags}\n  </head>`)
+
+    res.setHeader('content-type', 'text/html; charset=utf-8')
+    res.setHeader('cache-control', 'public, max-age=120, s-maxage=600')
+    res.send(html)
+  } catch {
+    // Never let a preview-generation problem break the actual page load.
+    return fallback()
+  }
+}
 
 type EventRow = {
   id: string
@@ -25,6 +82,11 @@ const activeStatuses = new Set(['active', 'reactivated', 'published'])
 
 export default async function handler(req: ApiRequest, res: ApiResponse) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' })
+  if (queryValue(req.query?.meta) === '1') {
+    const shareToken = queryValue(req.query?.event)
+    if (!shareToken) return res.status(400).json({ error: 'SHARE_TOKEN_REQUIRED' })
+    return renderShareMeta(req, res, shareToken)
+  }
   if (queryValue(req.query?.list) === '1') {
     try {
       const selection = 'id,title,event_date,venue,description,share_token,status,sale_starts_at,sale_ends_at'
