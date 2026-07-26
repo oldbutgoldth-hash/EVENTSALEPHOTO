@@ -142,6 +142,7 @@ export function AdminDashboard() {
   const [dashboardRevenue, setDashboardRevenue] = useState(runtimeConfig.dataMode === 'live' ? 0 : 430)
   const [reviewingOrderId, setReviewingOrderId] = useState('')
   const [deletingPhotoId, setDeletingPhotoId] = useState('')
+  const [autoRefresh, setAutoRefresh] = useState(true)
 
   const eventUrl = `${runtimeConfig.siteUrl}/?event=${encodeURIComponent(shareToken || eventSlug)}`
   const completeCount = uploads.filter((item) => item.status === 'done').length
@@ -155,8 +156,9 @@ export function AdminDashboard() {
       .finally(() => setCheckingSession(false))
   }, [])
 
-  const loadDashboard = useCallback(async (selectedEventId = '') => {
+  const loadDashboard = useCallback(async (selectedEventId = '', options: { applyEventFields?: boolean } = {}) => {
     if (runtimeConfig.dataMode !== 'live') return
+    const applyEventFields = options.applyEventFields ?? true
     setLoadingEventId(selectedEventId || 'latest')
     try {
       const suffix = selectedEventId ? `?eventId=${encodeURIComponent(selectedEventId)}` : ''
@@ -173,36 +175,41 @@ export function AdminDashboard() {
       }
       if (!response.ok) throw new Error(payload.error || 'โหลดข้อมูลหลังบ้านไม่สำเร็จ')
       setAdminEvents(payload.events || [])
-      setAdminCategories(payload.categories || [])
       setAdminPhotos(payload.photos || [])
-      if (payload.event) {
-        setEventId(payload.event.id)
-        setEventTitle(payload.event.title)
-        setEventSlug(payload.event.slug)
-        setShareToken(payload.event.share_token)
-        setEventDate(payload.event.event_date || '')
-        setVenue(payload.event.venue || '')
-        setEventStatus(payload.event.status || 'active')
-        const nextSaleStart = toDateTimeLocal(payload.event.sale_starts_at || new Date())
-        const nextSaleEnd = toDateTimeLocal(payload.event.sale_ends_at || addDaysToLocalDateTime(nextSaleStart, 7))
-        const nextOriginalPurge = toDateTimeLocal(payload.event.original_purge_at || addDaysToLocalDateTime(nextSaleEnd, 7))
-        setSaleStartsAt(nextSaleStart)
-        setSaleEndsAt(nextSaleEnd)
-        setOriginalPurgeAt(nextOriginalPurge)
-        setSaleDurationDays(daysBetween(nextSaleStart, nextSaleEnd, 7))
-        setOriginalGraceDays(daysBetween(nextSaleEnd, nextOriginalPurge, 7))
-        setOriginalsPurgedAt(payload.event.originals_purged_at || '')
-        setContactLineUrl(payload.event.contact_line_url || '')
-        setContactPhone(payload.event.contact_phone || '')
-      } else {
-        setEventId('')
-        setEventTitle('')
-        setEventSlug('')
-        setShareToken('')
-        setEventDate('')
-        setVenue('')
-        setAdminCategories([])
-        setAdminPhotos([])
+      // Auto-refresh ticks skip the event-detail form fields and categories so they
+      // never clobber text the admin is actively editing in "ข้อมูลงาน". Only manual
+      // loads (login, album switch, save, explicit refresh) apply them.
+      if (applyEventFields) {
+        setAdminCategories(payload.categories || [])
+        if (payload.event) {
+          setEventId(payload.event.id)
+          setEventTitle(payload.event.title)
+          setEventSlug(payload.event.slug)
+          setShareToken(payload.event.share_token)
+          setEventDate(payload.event.event_date || '')
+          setVenue(payload.event.venue || '')
+          setEventStatus(payload.event.status || 'active')
+          const nextSaleStart = toDateTimeLocal(payload.event.sale_starts_at || new Date())
+          const nextSaleEnd = toDateTimeLocal(payload.event.sale_ends_at || addDaysToLocalDateTime(nextSaleStart, 7))
+          const nextOriginalPurge = toDateTimeLocal(payload.event.original_purge_at || addDaysToLocalDateTime(nextSaleEnd, 7))
+          setSaleStartsAt(nextSaleStart)
+          setSaleEndsAt(nextSaleEnd)
+          setOriginalPurgeAt(nextOriginalPurge)
+          setSaleDurationDays(daysBetween(nextSaleStart, nextSaleEnd, 7))
+          setOriginalGraceDays(daysBetween(nextSaleEnd, nextOriginalPurge, 7))
+          setOriginalsPurgedAt(payload.event.originals_purged_at || '')
+          setContactLineUrl(payload.event.contact_line_url || '')
+          setContactPhone(payload.event.contact_phone || '')
+        } else {
+          setEventId('')
+          setEventTitle('')
+          setEventSlug('')
+          setShareToken('')
+          setEventDate('')
+          setVenue('')
+          setAdminCategories([])
+          setAdminPhotos([])
+        }
       }
       setDashboardPhotoCount(payload.photoCount || 0)
       setDashboardRevenue(payload.revenue || 0)
@@ -218,6 +225,18 @@ export function AdminDashboard() {
     if (runtimeConfig.dataMode !== 'live' || !authenticated) return
     void loadDashboard()
   }, [authenticated, loadDashboard])
+
+  // Keeps the order list and photo list current without a manual refresh —
+  // e.g. so a photographer sees a new order land while the tab is open. Skips
+  // a tick while a save/upload is in flight, and never touches the event-detail
+  // form fields, so it can't clobber in-progress edits.
+  useEffect(() => {
+    if (runtimeConfig.dataMode !== 'live' || !authenticated || !autoRefresh) return
+    const timer = window.setInterval(() => {
+      if (!saving && !loadingEventId) void loadDashboard(eventId, { applyEventFields: false })
+    }, 20000)
+    return () => window.clearInterval(timer)
+  }, [authenticated, autoRefresh, eventId, loadDashboard, loadingEventId, saving])
 
   const login = async () => {
     setLoginError('')
@@ -776,14 +795,34 @@ export function AdminDashboard() {
                   แสดงรูปของอัลบั้มที่เลือกอยู่ กดลบเพื่อนำทั้ง Preview, Original และข้อมูล Supabase ออกจากระบบ
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => eventId && void loadDashboard(eventId)}
-                disabled={!eventId || Boolean(loadingEventId)}
-                className="admin-mini-button disabled:opacity-50"
-              >
-                <RefreshCw size={18} className={loadingEventId ? 'animate-spin' : ''} /> รีเฟรชรายการ
-              </button>
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="font-body text-lg font-bold">อัลบั้มที่ดูอยู่
+                  <select
+                    value={eventId}
+                    onChange={(event) => { if (event.target.value) void loadDashboard(event.target.value) }}
+                    className="admin-input"
+                  >
+                    <option value="">— เลือกอัลบั้ม —</option>
+                    {adminEvents.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setAutoRefresh((value) => !value)}
+                  className={`admin-mini-button ${autoRefresh ? '!bg-[#d9f7df]' : ''}`}
+                  aria-pressed={autoRefresh}
+                >
+                  <RefreshCw size={18} className={autoRefresh ? 'animate-spin' : ''} /> {autoRefresh ? 'รีเฟรชอัตโนมัติ: เปิด' : 'รีเฟรชอัตโนมัติ: ปิด'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => eventId && void loadDashboard(eventId)}
+                  disabled={!eventId || Boolean(loadingEventId)}
+                  className="admin-mini-button disabled:opacity-50"
+                >
+                  <RefreshCw size={18} className={loadingEventId ? 'animate-spin' : ''} /> รีเฟรชตอนนี้
+                </button>
+              </div>
             </div>
 
             {!eventId ? (

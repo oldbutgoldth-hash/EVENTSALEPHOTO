@@ -15,9 +15,15 @@ type AssetRow = {
 // The @imagekit/nodejs SDK's helper.buildSrc({ queryParameters: { 'ik-attachment': 'true' } })
 // combination produced a malformed response from ImageKit's edge for every file (ERR_INVALID_RESPONSE
 // in the browser), so this bypasses the SDK for this one endpoint instead of guessing at its internals.
+//
+// tr:orig-true is required too: ImageKit auto-optimizes/reformats every delivered image by
+// default (e.g. re-encoding to WebP) even for private "original" files, unless this transformation
+// is present to force the exact original bytes. Without it, paying customers silently received a
+// recompressed WebP instead of the file they actually uploaded.
 function buildSignedAttachmentUrl(urlEndpoint: string, filePath: string, privateKey: string, expiresInSeconds: number): string {
   const endpoint = urlEndpoint.replace(/\/+$/, '')
-  const path = filePath.startsWith('/') ? filePath.slice(1) : filePath
+  const rawPath = filePath.startsWith('/') ? filePath.slice(1) : filePath
+  const path = `tr:orig-true/${rawPath}`
   const expiryTimestamp = Math.floor(Date.now() / 1000) + expiresInSeconds
   const signature = crypto.createHmac('sha1', privateKey).update(`${path}${expiryTimestamp}`).digest('hex')
   return `${endpoint}/${path}?ik-t=${expiryTimestamp}&ik-s=${signature}&ik-attachment=true`
