@@ -66,13 +66,13 @@ export async function verifySlipWithSlipOk(
     form.append('file', new Blob([fileBytes], { type: contentType }), 'slip.jpg')
     form.append('payload', JSON.stringify(payload))
 
-    // Per Slip2Go's own docs, the Authorization header value IS the secret key
-    // itself — no "Bearer " prefix. Sending "Bearer <key>" makes every request
-    // fail auth, which we'd otherwise safely (but silently) treat as
-    // "inconclusive" and skip auto-approval.
+    // Confirmed against Slip2Go's own "Authentication" page code sample:
+    // headers: { Authorization: 'Bearer {secretKey}' } — the Bearer prefix IS
+    // required (an earlier attempt without it produced "Authentication Token
+    // Mismatch").
     const response = await fetch('https://connect.slip2go.com/api/verify-slip/qr-image/info', {
       method: 'POST',
-      headers: { authorization: secretKey },
+      headers: { authorization: `Bearer ${secretKey}` },
       body: form,
     })
     const responseText = await response.text()
