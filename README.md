@@ -1,7 +1,3 @@
-# v1.4.4 — Vercel Build Fix
-
-แก้ `vite: command not found` โดยบังคับติดตั้ง devDependencies ผ่าน `npm ci --include=dev` และกำหนด Build/Output สำหรับ Vite ใน `vercel.json` พร้อมคง Slip2Go Auto Unlock v1.4.3 ไว้ครบถ้วน
-
 # KO’AKE Event Photo v1.4.2
 
 เว็บขายภาพกิจกรรมสำหรับช่างภาพ ลูกค้าค้นหาและเลือกภาพ ระบบคิดราคาตามจำนวน แสดง QR พร้อมเพย์ตามยอด รับสลิปแบบ private และเปิดดาวน์โหลดไฟล์เต็มเมื่อแอดมินอนุมัติ
