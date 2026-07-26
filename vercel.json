@@ -1,4 +1,9 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "installCommand": "npm ci --include=dev",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
   "rewrites": [
     {
       "source": "/api/admin-login",
@@ -26,7 +31,12 @@
     },
     {
       "source": "/",
-      "has": [{ "type": "query", "key": "event" }],
+      "has": [
+        {
+          "type": "query",
+          "key": "event"
+        }
+      ],
       "destination": "/api/catalog?meta=1"
     }
   ],
