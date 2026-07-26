@@ -13,10 +13,17 @@ export async function notifyTelegram(text: string): Promise<void> {
   const chatId = process.env.TELEGRAM_CHAT_ID
   if (!token || !chatId) return
   try {
+    // Hard time budget: without this, a slow/unreachable Telegram API can hang
+    // long enough to blow past Vercel's serverless function execution limit,
+    // which kills the whole request — the customer's slip upload would then
+    // fail with a raw "Failed to fetch" even though nothing was wrong with
+    // their slip. Capping this at 4s means the worst case is "no notification
+    // this time", never "the customer's request breaks".
     await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true }),
+      signal: AbortSignal.timeout(4000),
     })
   } catch {
     // best-effort only

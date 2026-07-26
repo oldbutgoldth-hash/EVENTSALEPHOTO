@@ -89,8 +89,13 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       await supabaseAdmin().storage.from('payment-slips').remove([order.payment_slip_path]).catch(() => undefined)
     }
 
+    // Awaited on purpose: Vercel's serverless runtime can freeze/tear down the
+    // function the instant the response is sent, so a fire-and-forget call here
+    // races the response and sometimes never actually reaches Telegram. notifyTelegram
+    // already swallows its own errors, so awaiting it just makes delivery reliable
+    // without risking the slip submission itself failing.
     const amountText = (order.amount_satang / 100).toFixed(2)
-    void notifyTelegram(
+    await notifyTelegram(
       slipStatus === 'rejected'
         ? `❌ สลิปถูกปฏิเสธอัตโนมัติ\nคำสั่งซื้อ ${order.order_number} · ยอด ${amountText} บาท\n${autoCheckNote || ''}`
         : `🧾 มีสลิปใหม่รอตรวจ\nคำสั่งซื้อ ${order.order_number} · ยอด ${amountText} บาท\nเปิดหน้าแอดมินเพื่อตรวจสอบ`,
