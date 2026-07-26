@@ -50,6 +50,18 @@ export function deleteEvent(eventId: string) {
   return adminEventMutation('DELETE', { eventId })
 }
 
+export async function resetEventOrders(eventId: string): Promise<{ deletedCount: number }> {
+  const response = await fetch('/api/admin-save-event', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ action: 'reset-orders', eventId }),
+  })
+  const payload = (await response.json().catch(() => ({}))) as { reset?: boolean; deletedCount?: number; error?: string }
+  if (!response.ok || !payload.reset) throw new Error(payload.error || 'รีเซตคำสั่งซื้อไม่สำเร็จ')
+  return { deletedCount: payload.deletedCount || 0 }
+}
+
 export function renameCategory(eventId: string, categoryId: string, name: string) {
   return adminEventMutation('PATCH', { action: 'rename-category', eventId, categoryId, name })
 }

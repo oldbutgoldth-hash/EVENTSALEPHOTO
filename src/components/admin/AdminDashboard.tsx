@@ -26,7 +26,7 @@ import {
 } from 'lucide-react'
 import { DEFAULT_PRICE_TIERS, formatBaht, formatBahtExact } from '../../lib/pricing'
 import { addDaysToLocalDateTime, addHoursToLocalDateTime, formatThaiDateTime, localDateTimeToIso, toDateTimeLocal, type EventLifecycleStatus } from '../../lib/eventLifecycle'
-import { deleteCategory, deleteEvent, deletePhoto, renameCategory, saveEvent } from '../../services/admin'
+import { deleteCategory, deleteEvent, deletePhoto, renameCategory, resetEventOrders, saveEvent } from '../../services/admin'
 import { reviewPayment } from '../../services/payment'
 import { BrandLogo } from '../BrandLogo'
 import { radii } from '../../lib/designTokens'
@@ -295,6 +295,25 @@ export function AdminDashboard() {
       await loadDashboard()
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'ลบอัลบั้มไม่สำเร็จ')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const resetOrders = async () => {
+    if (!eventId) return
+    const typed = window.prompt(
+      `รีเซตคำสั่งซื้อทั้งหมดของอัลบั้มนี้ (${dashboardOrders.length} รายการ) จะลบถาวรและกู้คืนไม่ได้ รวมถึงสลิปที่ลูกค้าอัปโหลดไว้ด้วย\n\nพิมพ์คำว่า "ลบ" เพื่อยืนยัน`,
+    )
+    if (typed?.trim() !== 'ลบ') return
+    setSaving(true)
+    setNotice('')
+    try {
+      const result = await resetEventOrders(eventId)
+      setNotice(`รีเซตคำสั่งซื้อแล้ว ${result.deletedCount} รายการ`)
+      await loadDashboard(eventId)
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'รีเซตคำสั่งซื้อไม่สำเร็จ')
     } finally {
       setSaving(false)
     }
@@ -903,7 +922,20 @@ export function AdminDashboard() {
 
         <section className="mt-10">
           <SketchCard decoration="tape" className="overflow-x-auto p-6">
-            <h2 className="font-heading text-4xl font-bold">คำสั่งซื้อล่าสุด</h2>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="font-heading text-4xl font-bold">คำสั่งซื้อล่าสุด</h2>
+              {eventId && dashboardOrders.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void resetOrders()}
+                  disabled={saving}
+                  className="admin-mini-button !bg-[#ffe4e4]"
+                  title="ลบคำสั่งซื้อทั้งหมดของอัลบั้มนี้ถาวร ใช้เมื่อไม่ได้เก็บสถิติการขาย"
+                >
+                  <Trash2 size={17} /> รีเซตคำสั่งซื้อทั้งหมด
+                </button>
+              )}
+            </div>
             <table className="mt-5 w-full min-w-[620px] border-separate border-spacing-y-2 font-body text-lg">
               <thead><tr className="text-left"><th className="px-3">เลขคำสั่งซื้อ</th><th>จำนวน</th><th>ยอด</th><th>สถานะ / ตรวจสลิป</th></tr></thead>
               <tbody>{dashboardOrders.map((order) => (

@@ -1,5 +1,5 @@
 import ImageKit from '@imagekit/nodejs'
-import { isAdminRequest, requiredEnv, supabaseRest, type ApiRequest, type ApiResponse } from '../server/utils.js'
+import { isAdminRequest, requiredEnv, supabaseAdmin, supabaseRest, type ApiRequest, type ApiResponse } from '../server/utils.js'
 
 type EventRow = { id: string; share_token: string }
 
@@ -32,6 +32,39 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     originalPurgeAt?: string | null
     contactLineUrl?: string
     contactPhone?: string
+  }
+
+  // Wipes every order (and their uploaded slips) for one event, for a photographer
+  // who isn't tracking sales stats and just wants a clean slate before a new
+  // event — scoped to a single event on purpose so a stray click can't nuke
+  // orders from a different, currently-live album. Irreversible: there is no
+  // backup of these rows once deleted.
+  if (req.method === 'POST' && body.action === 'reset-orders') {
+    if (!body.eventId) return res.status(400).json({ error: 'EVENT_ID_REQUIRED' })
+    try {
+      const orders = await supabaseRest<Array<{ id: string; payment_slip_path: string | null }>>(
+        `event_photo_orders?event_id=eq.${body.eventId}&select=id,payment_slip_path`,
+      )
+      if (!orders.length) return res.status(200).json({ reset: true, deletedCount: 0 })
+
+      const slipPaths = orders.map((order) => order.payment_slip_path).filter((path): path is string => Boolean(path))
+      if (slipPaths.length) {
+        await supabaseAdmin().storage.from('payment-slips').remove(slipPaths).catch(() => undefined)
+      }
+
+      const orderIds = orders.map((order) => order.id)
+      await supabaseRest(`event_photo_order_items?order_id=in.(${orderIds.join(',')})`, {
+        method: 'DELETE',
+        headers: { prefer: 'return=minimal' },
+      })
+      await supabaseRest(`event_photo_orders?event_id=eq.${body.eventId}`, {
+        method: 'DELETE',
+        headers: { prefer: 'return=minimal' },
+      })
+      return res.status(200).json({ reset: true, deletedCount: orders.length })
+    } catch (error) {
+      return res.status(500).json({ error: error instanceof Error ? error.message : 'ORDER_RESET_FAILED' })
+    }
   }
 
   if (req.method === 'PATCH' && body.action === 'rename-category') {
