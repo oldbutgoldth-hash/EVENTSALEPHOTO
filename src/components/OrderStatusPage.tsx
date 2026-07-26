@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AlertCircle, ArrowLeft, CheckCircle2, Clock3, Download, ImagePlus, LoaderCircle, RefreshCw, ShieldCheck, Upload } from 'lucide-react'
 import { radii } from '../lib/designTokens'
 import { formatBahtExact } from '../lib/pricing'
+import { markPhotoDownloaded } from '../lib/orderMemory'
 import { uploadPaymentSlip } from '../services/payment'
 import { QrCodeImage } from './QrCodeImage'
 import { SketchButton } from './SketchButton'
@@ -166,7 +167,12 @@ export function OrderStatusPage({ token }: { token: string }) {
                   <img src={photo.src} alt={photo.code} className="aspect-[4/5] w-full object-cover" style={{ borderRadius: radii.wobblySm }} />
                   <div className="p-3">
                     <p className="font-heading text-2xl font-bold">{photo.code}</p>
-                    <a href={`/api/download?orderToken=${encodeURIComponent(token)}&photoId=${encodeURIComponent(photo.id)}`} className="mt-3 flex min-h-12 items-center justify-center gap-2 border-[3px] border-pencil bg-white font-body text-xl font-bold shadow-hard transition-all hover:bg-pen hover:text-white" style={{ borderRadius: radii.wobbly }}>
+                    <a
+                      href={`/api/download?orderToken=${encodeURIComponent(token)}&photoId=${encodeURIComponent(photo.id)}`}
+                      onClick={() => markPhotoDownloaded(token, photo.id, state.photos.map((item) => item.id))}
+                      className="mt-3 flex min-h-12 items-center justify-center gap-2 border-[3px] border-pencil bg-white font-body text-xl font-bold shadow-hard transition-all hover:bg-pen hover:text-white"
+                      style={{ borderRadius: radii.wobbly }}
+                    >
                       <Download size={22} strokeWidth={2.8} /> ดาวน์โหลดไฟล์เต็ม
                     </a>
                   </div>
