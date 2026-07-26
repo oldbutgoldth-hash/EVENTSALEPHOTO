@@ -320,29 +320,25 @@ function StorefrontApp() {
           </section>
         )}
 
-        <section id="how" className="relative border-y-2 border-dashed border-pencil/35 bg-muted/55 py-20">
+        <section id="how" className="border-y-2 border-dashed border-pencil/35 bg-muted/55 py-10">
           <div className="mx-auto max-w-5xl px-6">
-            <div className="mb-12 text-center">
-              <p className="font-body text-xl text-pen">ง่ายเหมือนเลือกภาพในมือถือ</p>
-              <h2 className="font-heading text-5xl font-bold md:text-6xl">3 ขั้นตอน จบ!</h2>
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="font-heading text-3xl font-bold md:text-4xl">วิธีซื้อ · 3 ขั้นตอน</h2>
+              <p className="font-body text-lg text-pen">ง่ายเหมือนเลือกภาพในมือถือ</p>
             </div>
-            <div className="relative grid gap-8 md:grid-cols-3">
-              <svg className="absolute left-[17%] top-20 hidden h-16 w-[66%] md:block" viewBox="0 0 700 70" preserveAspectRatio="none" fill="none" aria-hidden="true">
-                <path d="M5 35C95 2 156 69 250 31C348 -9 407 73 493 30C565 -5 624 64 695 27" stroke="#2d5da1" strokeWidth="4" strokeDasharray="9 9" strokeLinecap="round" />
-              </svg>
+            <div className="flex flex-col gap-4 border-2 border-dashed border-pencil/40 bg-white p-4 sm:flex-row sm:items-center sm:gap-3" style={{ borderRadius: radii.wobblyMd }}>
               {[
-                { icon: Search, number: '1', title: 'ค้นหารูป', text: 'เลือกหมวดหรือพิมพ์เลขภาพที่อยู่บนรูปตัวอย่าง' },
-                { icon: ShoppingBag, number: '2', title: 'เลือกแพ็ก', text: 'เลือกได้ตั้งแต่ 1–10 รูป ระบบจะคำนวณราคาให้เอง' },
-                { icon: Check, number: '3', title: 'จ่ายแล้วโหลด', text: 'สแกน PromptPay และดาวน์โหลดภาพความละเอียดสูง' },
-              ].map((step, index) => (
-                <SketchCard key={step.number} decoration={index === 1 ? 'tack' : 'tape'} className={`${index === 0 ? '-rotate-1' : index === 2 ? 'rotate-1' : ''} z-10 p-6 text-center transition-transform hover:rotate-1`}>
-                  <div className="mx-auto -mt-12 mb-5 grid h-20 w-20 place-items-center border-[3px] border-pencil bg-sticky shadow-hard" style={{ borderRadius: radii.blob }}>
-                    <step.icon size={37} strokeWidth={2.7} />
-                  </div>
-                  <span className="absolute -right-2 -top-3 grid h-10 w-10 place-items-center border-2 border-pencil bg-marker font-heading text-xl font-bold text-white" style={{ borderRadius: radii.blob }}>{step.number}</span>
-                  <h3 className="font-heading text-3xl font-bold">{step.title}</h3>
-                  <p className="mt-2 font-body text-xl leading-relaxed text-pencil/70">{step.text}</p>
-                </SketchCard>
+                { number: '1', title: 'ค้นหารูป' },
+                { number: '2', title: 'เลือกแพ็ก' },
+                { number: '3', title: 'จ่ายแล้วโหลด' },
+              ].map((step, index, arr) => (
+                <div key={step.number} className="flex flex-1 items-center gap-3">
+                  <span className="grid h-11 w-11 shrink-0 place-items-center border-2 border-pencil bg-sticky font-heading text-lg font-bold" style={{ borderRadius: radii.blob }}>
+                    {step.number}
+                  </span>
+                  <p className="font-body text-lg font-bold">{step.title}</p>
+                  {index < arr.length - 1 && <span className="hidden h-[2px] flex-1 bg-pencil/25 sm:block" aria-hidden="true" />}
+                </div>
               ))}
             </div>
           </div>
