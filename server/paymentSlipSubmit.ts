@@ -40,6 +40,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     let autoCheckNote: string | null = null
     let transRef: string | null = null
     let fileHash: string | null = null
+    let autoApprove = false
     const download = await supabaseAdmin().storage.from('payment-slips').download(body.path)
     if (download.data) {
       const bytes = new Uint8Array(await download.data.arrayBuffer())
@@ -55,13 +56,30 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         slipStatus = 'rejected'
         autoCheckNote = `สลิปนี้เคยถูกใช้กับคำสั่งซื้อ ${duplicates[0].order_number} มาแล้ว ไม่สามารถใช้ซ้ำได้`
       } else {
-        // Optional paid upgrade (SlipOK): confirms the slip's real bank amount matches
-        // the order price. Skipped automatically if SLIPOK_API_KEY isn't configured —
-        // falls back to the photographer's manual review exactly as before.
+        // Slip2Go reads the real bank transaction behind the slip (amount + receiving
+        // account + reuse), so a "verified" outcome is trustworthy enough to skip the
+        // manual click entirely. Skipped automatically if SLIP2GO_SECRET_KEY isn't
+        // configured — falls back to the photographer's manual review as before.
         const check = await verifySlipWithSlipOk(bytes, body.contentType, order.amount_satang / 100)
         autoCheckNote = check.note
         if ('transRef' in check) transRef = check.transRef || null
         if (autoRejectOutcomes.has(check.outcome)) slipStatus = 'rejected'
+        if (check.outcome === 'verified') autoApprove = true
+
+        // Second, independent reuse check: the bank's own transaction reference.
+        // This catches a re-saved/re-compressed copy of the same slip image (which
+        // would have a different SHA-256 above but the same underlying bank
+        // transaction) being used to pay for two different orders.
+        if (autoApprove && transRef) {
+          const transRefDuplicates = await supabaseRest<Array<{ order_number: string }>>(
+            `event_photo_orders?slip_trans_ref=eq.${encodeURIComponent(transRef)}&id=neq.${order.id}&select=order_number&limit=1`,
+          )
+          if (transRefDuplicates[0]) {
+            autoApprove = false
+            slipStatus = 'rejected'
+            autoCheckNote = `เลขอ้างอิงธุรกรรมนี้เคยถูกใช้กับคำสั่งซื้อ ${transRefDuplicates[0].order_number} มาแล้ว ไม่สามารถใช้ซ้ำได้`
+          }
+        }
       }
     }
 
@@ -89,6 +107,27 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       await supabaseAdmin().storage.from('payment-slips').remove([order.payment_slip_path]).catch(() => undefined)
     }
 
+    // Auto-approve only runs after the order is safely sitting in 'under_review'
+    // (set just above), which is exactly the precondition review_event_photo_payment
+    // itself enforces — this is the same atomic RPC the admin's manual "approve"
+    // button calls, so approval side effects (paid_at, 7-day download window, etc.)
+    // are identical either way. If it fails for any reason (e.g. the original file
+    // isn't fully uploaded to ImageKit yet), we simply leave the order under review
+    // for the photographer to approve by hand — the slip submission itself still
+    // succeeds either way.
+    let autoApproved = false
+    if (autoApprove) {
+      try {
+        const reviewed = await supabaseRest<Array<{ payment_status: string }>>('rpc/review_event_photo_payment', {
+          method: 'POST',
+          body: JSON.stringify({ p_order_id: order.id, p_decision: 'approve', p_note: autoCheckNote }),
+        })
+        autoApproved = reviewed[0]?.payment_status === 'paid'
+      } catch {
+        // fall back to manual review — order stays 'under_review'
+      }
+    }
+
     // Awaited on purpose: Vercel's serverless runtime can freeze/tear down the
     // function the instant the response is sent, so a fire-and-forget call here
     // races the response and sometimes never actually reaches Telegram. notifyTelegram
@@ -98,13 +137,15 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     await notifyTelegram(
       slipStatus === 'rejected'
         ? `❌ สลิปถูกปฏิเสธอัตโนมัติ\nคำสั่งซื้อ ${order.order_number} · ยอด ${amountText} บาท\n${autoCheckNote || ''}`
-        : `🧾 มีสลิปใหม่รอตรวจ\nคำสั่งซื้อ ${order.order_number} · ยอด ${amountText} บาท\nเปิดหน้าแอดมินเพื่อตรวจสอบ`,
+        : autoApproved
+          ? `✅ อนุมัติอัตโนมัติแล้ว ไม่ต้องทำอะไรเพิ่ม\nคำสั่งซื้อ ${order.order_number} · ยอด ${amountText} บาท\n${autoCheckNote || ''}`
+          : `🧾 มีสลิปใหม่รอตรวจ\nคำสั่งซื้อ ${order.order_number} · ยอด ${amountText} บาท\nเปิดหน้าแอดมินเพื่อตรวจสอบ`,
     )
 
     if (slipStatus === 'rejected') {
       return res.status(200).json({ ok: true, autoRejected: true, reason: autoCheckNote })
     }
-    return res.status(200).json({ ok: true })
+    return res.status(200).json({ ok: true, autoApproved })
   } catch (error) {
     return res.status(500).json({ error: error instanceof Error ? error.message : 'SLIP_SUBMIT_FAILED' })
   }

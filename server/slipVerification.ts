@@ -1,10 +1,22 @@
-// Automatic slip verification via SlipOK (https://slipok.com/api-documentation/).
-// SlipOK reads the bank QR embedded in the slip image itself, so it checks the
-// real transaction — not just the picture — for the amount and for reuse.
+// Automatic slip verification via Slip2Go (https://connect.slip2go.com/api),
+// a sibling product to SlipOK with its own REST API and a different contract
+// (Bearer secret key, no branch id, JSON "payload" alongside the file). It
+// reads the real bank QR embedded in the slip image — not just the picture —
+// so a clean success response with a matching amount is trustworthy enough
+// to skip the manual review click.
 //
-// Configure with SLIPOK_API_KEY and SLIPOK_BRANCH_ID (from the SlipOK dashboard).
-// If those aren't set, verification is skipped and treated as inconclusive so the
-// existing manual-review flow keeps working exactly as before.
+// Configure with SLIP2GO_SECRET_KEY (from the shop dashboard's
+// API Connect > Authentication page). If it isn't set, verification is
+// skipped and treated as inconclusive so the existing manual-review flow
+// keeps working exactly as before.
+//
+// Note: this only auto-approves on a clean, amount-matching success — it does
+// not auto-reject on Slip2Go-reported mismatches yet, since the exact
+// non-success codes for "wrong amount"/"wrong account" weren't available to
+// confirm against. Anything that isn't a confirmed match just falls back to
+// manual review, which is always safe. Reuse is still caught two ways: the
+// free SHA-256 image-hash check (in paymentSlipSubmit.ts, independent of this
+// file) and, new here, a check on the bank's own transaction reference.
 
 export type SlipCheckResult =
   | { outcome: 'verified'; transRef: string; amount: number; note: string }
@@ -13,71 +25,78 @@ export type SlipCheckResult =
   | { outcome: 'wrong_account'; note: string; transRef?: string }
   | { outcome: 'inconclusive'; note: string }
 
-type SlipOkSlipData = {
-  transRef?: string
-  amount?: number
-  transDate?: string
-  transTime?: string
+type Slip2GoResponse = {
+  code: string
+  message: string
+  data?: {
+    transRef?: string
+    amount?: number
+  }
 }
-
-type SlipOkSuccessResponse = { success: true; data: SlipOkSlipData }
-type SlipOkErrorResponse = { code: number; message: string; data?: SlipOkSlipData }
 
 export async function verifySlipWithSlipOk(
   fileBytes: Uint8Array,
   contentType: string,
   expectedAmountBaht: number,
 ): Promise<SlipCheckResult> {
-  const apiKey = process.env.SLIPOK_API_KEY
-  const branchId = process.env.SLIPOK_BRANCH_ID
-  if (!apiKey || !branchId) {
-    return { outcome: 'inconclusive', note: 'ยังไม่ได้ตั้งค่าระบบตรวจสลิปอัตโนมัติ (SLIPOK_API_KEY / SLIPOK_BRANCH_ID) — ตรวจด้วยตนเอง' }
+  const secretKey = process.env.SLIP2GO_SECRET_KEY
+  if (!secretKey) {
+    return { outcome: 'inconclusive', note: 'ยังไม่ได้ตั้งค่าระบบตรวจสลิปอัตโนมัติ (SLIP2GO_SECRET_KEY) — ตรวจด้วยตนเอง' }
   }
 
   try {
-    const form = new FormData()
-    form.append('files', new Blob([fileBytes], { type: contentType }), 'slip.jpg')
-    form.append('log', 'true')
-    form.append('amount', String(expectedAmountBaht))
+    // PROMPTPAY_ID is reused here (not a separate env var) — it's already the
+    // phone number the shop's PromptPay QR is generated from, in the same
+    // plain 10-digit form Slip2Go expects for accountType 02001 (PromptPay by
+    // phone). If the shop ever switches to a national-ID-based PromptPay
+    // account, this receiver check should be revisited (different accountType).
+    const receiverPhone = (process.env.PROMPTPAY_ID || '').replace(/\D/g, '')
+    const payload: Record<string, unknown> = {
+      checkDuplicate: true,
+      checkAmount: { type: 'eq', amount: expectedAmountBaht.toFixed(2) },
+    }
+    if (receiverPhone.length === 10) {
+      payload.checkReceiver = [{ accountType: '02001', accountNumber: receiverPhone }]
+    }
 
-    const response = await fetch(`https://api.slipok.com/api/line/apikey/${branchId}`, {
+    const form = new FormData()
+    form.append('file', new Blob([fileBytes], { type: contentType }), 'slip.jpg')
+    form.append('payload', JSON.stringify(payload))
+
+    const response = await fetch('https://connect.slip2go.com/api/verify-slip/qr-image/info', {
       method: 'POST',
-      headers: { 'x-authorization': apiKey },
+      headers: { authorization: `Bearer ${secretKey}` },
       body: form,
     })
-    const payload = (await response.json().catch(() => null)) as SlipOkSuccessResponse | SlipOkErrorResponse | null
-    if (!payload) return { outcome: 'inconclusive', note: 'ระบบตรวจสลิปอัตโนมัติตอบกลับไม่ถูกต้อง กรุณาตรวจด้วยตนเอง' }
+    const result = (await response.json().catch(() => null)) as Slip2GoResponse | null
+    if (!result) return { outcome: 'inconclusive', note: 'ระบบตรวจสลิปอัตโนมัติตอบกลับไม่ถูกต้อง กรุณาตรวจด้วยตนเอง' }
 
-    if (response.ok && 'success' in payload && payload.success) {
-      const data = payload.data
+    const transRef = result.data?.transRef
+    if (result.code !== '200000' || !result.data) {
       return {
-        outcome: 'verified',
-        transRef: data.transRef || '',
-        amount: data.amount ?? expectedAmountBaht,
-        note: `ตรวจสอบอัตโนมัติผ่าน ✅ ยอด ${data.amount ?? '-'} บาท ตรงกับราคา · เลขอ้างอิง ${data.transRef || '-'}`,
+        outcome: 'inconclusive',
+        note: result.message ? `ตรวจอัตโนมัติไม่สำเร็จ: ${result.message}` : 'ระบบตรวจสลิปอัตโนมัติไม่สามารถยืนยันได้ กรุณาตรวจด้วยตนเอง',
       }
     }
 
-    const errorPayload = payload as SlipOkErrorResponse
-    const transRef = errorPayload.data?.transRef || undefined
-    if (errorPayload.code === 1012) {
-      return { outcome: 'duplicate', note: `สลิปนี้เคยถูกใช้ไปแล้ว — ${errorPayload.message || ''}`.trim(), transRef }
-    }
-    if (errorPayload.code === 1013) {
-      const slipAmount = errorPayload.data?.amount
+    // Belt-and-suspenders: data.amount isn't masked (unlike account numbers),
+    // so re-confirm it ourselves even though checkAmount already asked
+    // Slip2Go to do the same check server-side.
+    const slipAmount = result.data.amount
+    if (typeof slipAmount !== 'number' || Math.round(slipAmount * 100) !== Math.round(expectedAmountBaht * 100)) {
       return {
         outcome: 'amount_mismatch',
-        note: `ยอดในสลิป${slipAmount != null ? ` (${slipAmount} บาท)` : ''} ไม่ตรงกับยอดที่ต้องชำระ (${expectedAmountBaht} บาท)`,
+        note: `ยอดในสลิป (${slipAmount ?? '-'} บาท) ไม่ตรงกับยอดที่ต้องชำระ (${expectedAmountBaht.toFixed(2)} บาท)`,
         transRef,
       }
     }
-    if (errorPayload.code === 1014) {
-      return { outcome: 'wrong_account', note: errorPayload.message || 'บัญชีผู้รับในสลิปไม่ตรงกับบัญชีร้าน', transRef }
+
+    return {
+      outcome: 'verified',
+      transRef: transRef || '',
+      amount: slipAmount,
+      note: `ตรวจสอบอัตโนมัติผ่าน ✅ ยอด ${slipAmount.toFixed(2)} บาท ตรงกับราคา · เลขอ้างอิง ${transRef || '-'}`,
     }
-    // Bad/unreadable QR, bank-delay slips, quota issues, etc. — don't auto-reject on these,
-    // since they can be false negatives. Let the photographer review the slip manually;
-    // the note just explains why the automatic check couldn't confirm it either way.
-    return { outcome: 'inconclusive', note: errorPayload.message ? `ตรวจอัตโนมัติไม่สำเร็จ: ${errorPayload.message}` : 'ระบบตรวจสลิปอัตโนมัติไม่สามารถยืนยันได้ กรุณาตรวจด้วยตนเอง' }
   } catch (error) {
     return {
       outcome: 'inconclusive',

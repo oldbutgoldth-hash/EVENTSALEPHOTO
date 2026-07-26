@@ -47,8 +47,9 @@ ADMIN_SESSION_SECRET=ข้อความสุ่มยาวอย่าง�
 CRON_SECRET=ข้อความสุ่มยาวอย่างน้อย16ตัวอักษร
 
 # ไม่บังคับ — ถ้าไม่ใส่ ระบบจะข้ามการตรวจสลิปอัตโนมัติและใช้การตรวจด้วยมือเหมือนเดิม
-SLIPOK_API_KEY=API_KEY_จาก_slipok.com
-SLIPOK_BRANCH_ID=BRANCH_ID_จาก_slipok.com
+# เอา Secret Key จากหน้า API Connect > Authentication ในแดชบอร์ด Slip2Go
+# ไม่ต้องตั้งค่า branch id แยก — ระบบใช้ PROMPTPAY_ID ด้านบนเป็นเบอร์บัญชีผู้รับ
+SLIP2GO_SECRET_KEY=SECRET_KEY_จาก_connect.slip2go.com
 
 # ไม่บังคับ — ฟรี ถ้าไม่ใส่ ระบบจะข้ามการแจ้งเตือน Telegram (วิธีสร้างดูใน README)
 TELEGRAM_BOT_TOKEN=โทเคนบอทจาก_BotFather
