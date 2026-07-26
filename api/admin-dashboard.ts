@@ -20,6 +20,21 @@ type CategoryRow = {
   name: string
   sort_order: number
 }
+type PhotoRow = {
+  id: string
+  photo_code: string
+  category: string | null
+  filename: string
+  preview_url: string
+  is_visible: boolean
+  created_at: string
+}
+type PhotoAssetRow = {
+  photo_id: string
+  imagekit_file_id: string | null
+  preview_imagekit_file_id: string | null
+  original_storage_status: string | null
+}
 type OrderRow = {
   id: string
   order_number: string
@@ -47,6 +62,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         event: null,
         events: [],
         categories: [],
+        photos: [],
         photoCount: 0,
         orderCount: 0,
         revenue: 0,
@@ -54,16 +70,28 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       })
     }
 
-    const [photos, orders, categories] = await Promise.all([
-      supabaseRest<Array<{ id: string }>>(`event_photo_photos?event_id=eq.${event.id}&select=id`),
+    const [photos, assets, orders, categories] = await Promise.all([
+      supabaseRest<PhotoRow[]>(`event_photo_photos?event_id=eq.${event.id}&select=id,photo_code,category,filename,preview_url,is_visible,created_at&order=sort_order.asc,created_at.asc&limit=500`),
+      supabaseRest<PhotoAssetRow[]>(`event_photo_photo_assets?event_photo_photos.event_id=eq.${event.id}&select=photo_id,imagekit_file_id,preview_imagekit_file_id,original_storage_status,event_photo_photos!inner(event_id)`),
       supabaseRest<OrderRow[]>(`event_photo_orders?event_id=eq.${event.id}&select=id,order_number,selected_count,amount_satang,payment_status,payment_slip_path,payment_slip_uploaded_at,payment_review_note,created_at&order=created_at.desc&limit=50`),
       supabaseRest<CategoryRow[]>(`event_photo_categories?event_id=eq.${event.id}&select=id,name,sort_order&order=sort_order.asc,name.asc`),
     ])
+    const assetsByPhoto = new Map(assets.map((asset) => [asset.photo_id, asset]))
     const paidOrders = orders.filter((order) => order.payment_status === 'paid')
     return res.status(200).json({
       event,
       events: allEvents,
       categories,
+      photos: photos.map((photo) => ({
+        id: photo.id,
+        code: photo.photo_code,
+        category: photo.category,
+        filename: photo.filename,
+        previewUrl: photo.preview_url,
+        isVisible: photo.is_visible,
+        createdAt: photo.created_at,
+        originalStatus: assetsByPhoto.get(photo.id)?.original_storage_status || 'unknown',
+      })),
       photoCount: photos.length,
       orderCount: orders.length,
       revenue: paidOrders.reduce((sum, order) => sum + order.amount_satang, 0) / 100,

@@ -57,3 +57,15 @@ export function renameCategory(eventId: string, categoryId: string, name: string
 export function deleteCategory(eventId: string, categoryId: string) {
   return adminEventMutation('DELETE', { eventId, categoryId })
 }
+
+export async function deletePhoto(eventId: string, photoId: string) {
+  const response = await fetch('/api/admin-save-photo', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ action: 'delete', eventId, photoId }),
+  })
+  const payload = (await response.json().catch(() => ({}))) as { deleted?: boolean; error?: string }
+  if (!response.ok || !payload.deleted) throw new Error(payload.error || 'ลบรูปไม่สำเร็จ')
+  return payload
+}

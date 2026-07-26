@@ -9,6 +9,7 @@ import {
   Database,
   ExternalLink,
   Image as ImageIcon,
+  Images,
   KeyRound,
   LoaderCircle,
   LogIn,
@@ -25,7 +26,7 @@ import {
 } from 'lucide-react'
 import { DEFAULT_PRICE_TIERS, formatBaht } from '../../lib/pricing'
 import { addDaysToLocalDateTime, addHoursToLocalDateTime, formatThaiDateTime, localDateTimeToIso, toDateTimeLocal, type EventLifecycleStatus } from '../../lib/eventLifecycle'
-import { deleteCategory, deleteEvent, renameCategory, saveEvent } from '../../services/admin'
+import { deleteCategory, deleteEvent, deletePhoto, renameCategory, saveEvent } from '../../services/admin'
 import { reviewPayment } from '../../services/payment'
 import { BrandLogo } from '../BrandLogo'
 import { radii } from '../../lib/designTokens'
@@ -79,6 +80,17 @@ type AdminCategory = {
   sort_order: number
 }
 
+type AdminPhoto = {
+  id: string
+  code: string
+  category: string | null
+  filename: string
+  previewUrl: string
+  isVisible: boolean
+  createdAt: string
+  originalStatus: string
+}
+
 const mockOrders: AdminOrder[] = [
   { id: 'demo-142', orderNumber: 'EP-2569-0142', count: 3, total: 100, status: 'ชำระแล้ว', paymentStatus: 'paid', slipUrl: null, slipUploadedAt: null, reviewNote: null },
   { id: 'demo-141', orderNumber: 'EP-2569-0141', count: 10, total: 250, status: 'รอตรวจสลิป', paymentStatus: 'under_review', slipUrl: null, slipUploadedAt: new Date().toISOString(), reviewNote: null },
@@ -110,6 +122,7 @@ export function AdminDashboard() {
   const [shareToken, setShareToken] = useState(runtimeConfig.eventShareToken)
   const [adminEvents, setAdminEvents] = useState<AdminEvent[]>([])
   const [adminCategories, setAdminCategories] = useState<AdminCategory[]>([])
+  const [adminPhotos, setAdminPhotos] = useState<AdminPhoto[]>([])
   const [loadingEventId, setLoadingEventId] = useState('')
   const [uploads, setUploads] = useState<UploadItem[]>([])
   const [notice, setNotice] = useState('')
@@ -118,6 +131,7 @@ export function AdminDashboard() {
   const [dashboardPhotoCount, setDashboardPhotoCount] = useState(runtimeConfig.dataMode === 'live' ? 0 : 128)
   const [dashboardRevenue, setDashboardRevenue] = useState(runtimeConfig.dataMode === 'live' ? 0 : 430)
   const [reviewingOrderId, setReviewingOrderId] = useState('')
+  const [deletingPhotoId, setDeletingPhotoId] = useState('')
 
   const eventUrl = `${runtimeConfig.siteUrl}/?event=${encodeURIComponent(shareToken || eventSlug)}`
   const completeCount = uploads.filter((item) => item.status === 'done').length
@@ -141,6 +155,7 @@ export function AdminDashboard() {
         event?: AdminEvent | null
         events?: AdminEvent[]
         categories?: AdminCategory[]
+        photos?: AdminPhoto[]
         photoCount?: number
         revenue?: number
         orders?: AdminOrder[]
@@ -149,6 +164,7 @@ export function AdminDashboard() {
       if (!response.ok) throw new Error(payload.error || 'โหลดข้อมูลหลังบ้านไม่สำเร็จ')
       setAdminEvents(payload.events || [])
       setAdminCategories(payload.categories || [])
+      setAdminPhotos(payload.photos || [])
       if (payload.event) {
         setEventId(payload.event.id)
         setEventTitle(payload.event.title)
@@ -171,6 +187,7 @@ export function AdminDashboard() {
         setEventDate('')
         setVenue('')
         setAdminCategories([])
+        setAdminPhotos([])
       }
       setDashboardPhotoCount(payload.photoCount || 0)
       setDashboardRevenue(payload.revenue || 0)
@@ -221,6 +238,7 @@ export function AdminDashboard() {
     setOriginalPurgeAt(addDaysToLocalDateTime(start, 30))
     setOriginalsPurgedAt('')
     setAdminCategories([])
+    setAdminPhotos([])
     setDashboardOrders([])
     setDashboardPhotoCount(0)
     setDashboardRevenue(0)
@@ -270,6 +288,26 @@ export function AdminDashboard() {
       setNotice(error instanceof Error ? error.message : 'ลบหมวดไม่สำเร็จ')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const removePhoto = async (item: AdminPhoto) => {
+    if (!eventId || deletingPhotoId) return
+    const confirmed = window.confirm(
+      `ลบรูป ${item.code} ออกจากอัลบั้มใช่หรือไม่?\nระบบจะลบทั้ง Preview, Original ใน ImageKit และข้อมูลใน Supabase การดำเนินการนี้ย้อนกลับไม่ได้`,
+    )
+    if (!confirmed) return
+    setDeletingPhotoId(item.id)
+    setNotice('')
+    try {
+      await deletePhoto(eventId, item.id)
+      setAdminPhotos((current) => current.filter((photo) => photo.id !== item.id))
+      setDashboardPhotoCount((count) => Math.max(0, count - 1))
+      setNotice(`ลบรูป ${item.code} จาก ImageKit และ Supabase แล้ว`)
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'ลบรูปไม่สำเร็จ')
+    } finally {
+      setDeletingPhotoId('')
     }
   }
 
@@ -420,6 +458,7 @@ export function AdminDashboard() {
     }
 
     let sequence = dashboardPhotoCount + completeCount + 1
+    const successfulIds: string[] = []
     for (const item of queue) {
       try {
         updateUpload(item.id, { status: 'uploading', progress: 1, error: undefined })
@@ -433,9 +472,14 @@ export function AdminDashboard() {
         sequence += 1
         if (item.preview.startsWith('blob:')) URL.revokeObjectURL(item.preview)
         updateUpload(item.id, { status: 'done', progress: 100, upload, preview: upload.preview.url })
+        successfulIds.push(item.id)
       } catch (error) {
         updateUpload(item.id, { status: 'error', error: error instanceof Error ? error.message : 'อัปโหลดไม่สำเร็จ' })
       }
+    }
+    if (successfulIds.length) {
+      setUploads((current) => current.filter((item) => !successfulIds.includes(item.id)))
+      await loadDashboard(eventId)
     }
     setSaving(false)
     setNotice('อัปโหลดคิวเสร็จแล้ว กรุณาตรวจรายการที่มีสถานะผิดพลาด')
@@ -481,7 +525,7 @@ export function AdminDashboard() {
 
       <main className="mx-auto max-w-6xl px-6 py-10">
         <div className="mb-10 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div><span className="sticky-tag inline-block -rotate-1">หลังบ้านเวอร์ชัน 1.3.7 · Album Manager</span><h1 className="mt-4 font-heading text-5xl font-bold md:text-6xl">จัดการงานขายภาพ</h1></div>
+          <div><span className="sticky-tag inline-block -rotate-1">หลังบ้านเวอร์ชัน 1.3.8 · Album Manager</span><h1 className="mt-4 font-heading text-5xl font-bold md:text-6xl">จัดการงานขายภาพ</h1></div>
           <span className={`border-2 border-dashed border-pencil px-4 py-2 font-body text-lg ${runtimeConfig.dataMode === 'live' ? 'bg-[#d9f7df]' : 'bg-sticky'}`} style={{ borderRadius: radii.wobblySm }}>
             โหมด: {runtimeConfig.dataMode === 'live' ? 'LIVE เชื่อมระบบจริง' : 'DEMO ทดลองหน้าจอ'}
           </span>
@@ -650,6 +694,82 @@ export function AdminDashboard() {
               <SketchButton disabled={saving || !uploads.some((item) => item.status !== 'done')} onClick={uploadAll} className="inline-flex items-center gap-2"><CloudUpload size={21} strokeWidth={2.8} /> {saving ? 'กำลังอัปโหลด…' : 'เริ่มอัปโหลดทั้งหมด'}</SketchButton>
               <span className="font-body text-lg text-pencil/60">สำเร็จ {completeCount}/{uploads.length} รูป</span>
             </div>
+          </SketchCard>
+        </section>
+
+        <section className="mt-10">
+          <SketchCard decoration="tack" className="p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-3">
+                  <Images size={30} strokeWidth={2.8} />
+                  <h2 className="font-heading text-4xl font-bold">จัดการรูปในอัลบั้ม</h2>
+                </div>
+                <p className="mt-2 font-body text-xl text-pencil/65">
+                  แสดงรูปของอัลบั้มที่เลือกอยู่ กดลบเพื่อนำทั้ง Preview, Original และข้อมูล Supabase ออกจากระบบ
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => eventId && void loadDashboard(eventId)}
+                disabled={!eventId || Boolean(loadingEventId)}
+                className="admin-mini-button disabled:opacity-50"
+              >
+                <RefreshCw size={18} className={loadingEventId ? 'animate-spin' : ''} /> รีเฟรชรายการ
+              </button>
+            </div>
+
+            {!eventId ? (
+              <div className="mt-6 border-[3px] border-dashed border-pencil/45 bg-muted/35 p-8 text-center font-body text-xl" style={{ borderRadius: radii.wobblyMd }}>
+                เลือกอัลบั้มก่อนเพื่อดูรูปที่อัปโหลด
+              </div>
+            ) : adminPhotos.length === 0 ? (
+              <div className="mt-6 border-[3px] border-dashed border-pencil/45 bg-muted/35 p-8 text-center" style={{ borderRadius: radii.wobblyMd }}>
+                <ImageIcon className="mx-auto" size={42} strokeWidth={2.4} />
+                <p className="mt-2 font-heading text-3xl font-bold">อัลบั้มนี้ยังไม่มีรูป</p>
+              </div>
+            ) : (
+              <>
+                <div className="mt-5 flex flex-wrap items-center gap-3 font-body text-lg">
+                  <span className="sketch-pill"><Images size={19} /> ทั้งหมด {adminPhotos.length} รูป</span>
+                  <span className="text-pencil/60">รูปที่อยู่ในคำสั่งซื้อแล้วจะถูกป้องกันไม่ให้ลบ เพื่อรักษาสิทธิ์ดาวน์โหลดของลูกค้า</span>
+                </div>
+                <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                  {adminPhotos.map((photo) => (
+                    <article key={photo.id} className="border-[3px] border-pencil bg-white p-2 shadow-hard" style={{ borderRadius: radii.wobblySm }}>
+                      <img
+                        src={photo.previewUrl}
+                        alt={photo.code}
+                        loading="lazy"
+                        className="aspect-square w-full bg-muted object-cover"
+                        style={{ borderRadius: radii.wobblySm }}
+                      />
+                      <div className="p-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-heading text-2xl font-bold">{photo.code}</p>
+                            <p className="truncate font-body text-base text-pencil/60">{photo.category || 'ไม่ระบุหมวด'}</p>
+                          </div>
+                          <span className={`${photo.originalStatus === 'online' ? 'bg-[#d9f7df]' : 'bg-muted'} shrink-0 border-2 border-pencil px-2 py-1 font-body text-xs font-bold`} style={{ borderRadius: radii.wobblySm }}>
+                            {photo.originalStatus === 'online' ? 'Original พร้อม' : 'ไม่มี Original'}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void removePhoto(photo)}
+                          disabled={Boolean(deletingPhotoId)}
+                          className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 border-[3px] border-pencil bg-[#ffe4e4] px-3 font-body text-lg font-bold shadow-hard transition-all hover:bg-marker hover:text-white active:translate-x-1 active:translate-y-1 active:shadow-none disabled:cursor-wait disabled:opacity-50"
+                          style={{ borderRadius: radii.wobbly }}
+                        >
+                          {deletingPhotoId === photo.id ? <LoaderCircle size={19} className="animate-spin" /> : <Trash2 size={19} />}
+                          {deletingPhotoId === photo.id ? 'กำลังลบ…' : 'ลบรูปนี้'}
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </>
+            )}
           </SketchCard>
         </section>
 
