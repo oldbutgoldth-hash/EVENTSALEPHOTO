@@ -481,7 +481,7 @@ export function AdminDashboard() {
 
       <main className="mx-auto max-w-6xl px-6 py-10">
         <div className="mb-10 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div><span className="sticky-tag inline-block -rotate-1">หลังบ้านเวอร์ชัน 1.3.4 · Album Manager</span><h1 className="mt-4 font-heading text-5xl font-bold md:text-6xl">จัดการงานขายภาพ</h1></div>
+          <div><span className="sticky-tag inline-block -rotate-1">หลังบ้านเวอร์ชัน 1.3.5 · Album Manager</span><h1 className="mt-4 font-heading text-5xl font-bold md:text-6xl">จัดการงานขายภาพ</h1></div>
           <span className={`border-2 border-dashed border-pencil px-4 py-2 font-body text-lg ${runtimeConfig.dataMode === 'live' ? 'bg-[#d9f7df]' : 'bg-sticky'}`} style={{ borderRadius: radii.wobblySm }}>
             โหมด: {runtimeConfig.dataMode === 'live' ? 'LIVE เชื่อมระบบจริง' : 'DEMO ทดลองหน้าจอ'}
           </span>
@@ -605,13 +605,26 @@ export function AdminDashboard() {
 
         <section className="mt-10">
           <SketchCard decoration="tape" className="p-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
               <div><div className="flex items-center gap-3"><CloudUpload size={30} strokeWidth={2.8} /><h2 className="font-heading text-4xl font-bold">อัปโหลดภาพไป ImageKit</h2></div><p className="mt-1 font-body text-xl text-pencil/65">ระบบอัปโหลด Original แบบ Private และสร้าง Preview พร้อมลายน้ำเป็นไฟล์แยก เพื่อให้ลบ Original หลัง 30 วันได้โดย Preview ยังอยู่</p></div>
-              <label className="inline-flex min-h-14 cursor-pointer items-center justify-center gap-2 border-[3px] border-pencil bg-sticky px-5 font-body text-xl font-bold shadow-hard transition-transform hover:-rotate-1" style={{ borderRadius: radii.wobbly }}>
-                <ImageIcon size={22} strokeWidth={2.8} /> เลือกหลายรูป
-                <input type="file" accept="image/jpeg,image/png,image/webp" multiple className="sr-only" onChange={(event) => { addFiles(event.target.files); event.currentTarget.value = '' }} />
-              </label>
+              <div className="grid w-full gap-3 lg:max-w-sm">
+                <label className="font-body text-lg font-bold">อัลบั้มปลายทาง
+                  <select
+                    value={eventId}
+                    onChange={(event) => { if (event.target.value) void loadDashboard(event.target.value) }}
+                    className="admin-input"
+                  >
+                    <option value="">— เลือกอัลบั้มก่อน —</option>
+                    {adminEvents.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
+                  </select>
+                </label>
+                <label className={`inline-flex min-h-14 items-center justify-center gap-2 border-[3px] border-pencil px-5 font-body text-xl font-bold shadow-hard transition-transform ${eventId ? 'cursor-pointer bg-sticky hover:-rotate-1' : 'cursor-not-allowed bg-muted opacity-50'}`} style={{ borderRadius: radii.wobbly }}>
+                  <ImageIcon size={22} strokeWidth={2.8} /> เลือกหลายรูป
+                  <input disabled={!eventId} type="file" accept="image/jpeg,image/png,image/webp" multiple className="sr-only" onChange={(event) => { addFiles(event.target.files); event.currentTarget.value = '' }} />
+                </label>
+              </div>
             </div>
+            {!eventId && <div className="mt-5 border-[3px] border-marker bg-[#ffe4e4] p-4 font-body text-xl text-marker" style={{ borderRadius: radii.wobblySm }}>กรุณาสร้างและบันทึกอัลบั้ม หรือเลือกอัลบั้มปลายทางก่อนเลือกรูป</div>}
 
             {uploads.length === 0 ? (
               <div className="mt-7 border-[3px] border-dashed border-pencil/50 bg-muted/35 p-10 text-center" style={{ borderRadius: radii.wobblyMd }}>
