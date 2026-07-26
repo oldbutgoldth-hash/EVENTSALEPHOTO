@@ -45,6 +45,10 @@ PROMPTPAY_ACCOUNT_NAME=ชื่อที่ต้องการแสดง
 ADMIN_PASSWORD=รหัสผ่านหลังบ้านที่เดายาก
 ADMIN_SESSION_SECRET=ข้อความสุ่มยาวอย่างน้อย32ตัวอักษร
 CRON_SECRET=ข้อความสุ่มยาวอย่างน้อย16ตัวอักษร
+
+# ไม่บังคับ — ถ้าไม่ใส่ ระบบจะข้ามการตรวจสลิปอัตโนมัติและใช้การตรวจด้วยมือเหมือนเดิม
+SLIPOK_API_KEY=API_KEY_จาก_slipok.com
+SLIPOK_BRANCH_ID=BRANCH_ID_จาก_slipok.com
 ```
 
 ห้ามเติม `VITE_` หน้า Service Role Key, ImageKit Private Key, รหัสแอดมิน หรือ Session Secret เพราะค่าที่ขึ้นต้นด้วย `VITE_` จะถูกส่งไปที่เบราว์เซอร์

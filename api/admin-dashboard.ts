@@ -44,6 +44,8 @@ type OrderRow = {
   payment_slip_path: string | null
   payment_slip_uploaded_at: string | null
   payment_review_note: string | null
+  slip_auto_check_note: string | null
+  slip_trans_ref: string | null
   created_at: string
 }
 
@@ -73,7 +75,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     const [photos, assets, orders, categories] = await Promise.all([
       supabaseRest<PhotoRow[]>(`event_photo_photos?event_id=eq.${event.id}&select=id,photo_code,category,filename,preview_url,is_visible,created_at&order=sort_order.asc,created_at.asc&limit=500`),
       supabaseRest<PhotoAssetRow[]>(`event_photo_photo_assets?event_photo_photos.event_id=eq.${event.id}&select=photo_id,imagekit_file_id,preview_imagekit_file_id,original_storage_status,event_photo_photos!inner(event_id)`),
-      supabaseRest<OrderRow[]>(`event_photo_orders?event_id=eq.${event.id}&select=id,order_number,selected_count,amount_satang,payment_status,payment_slip_path,payment_slip_uploaded_at,payment_review_note,created_at&order=created_at.desc&limit=50`),
+      supabaseRest<OrderRow[]>(`event_photo_orders?event_id=eq.${event.id}&select=id,order_number,selected_count,amount_satang,payment_status,payment_slip_path,payment_slip_uploaded_at,payment_review_note,slip_auto_check_note,slip_trans_ref,created_at&order=created_at.desc&limit=50`),
       supabaseRest<CategoryRow[]>(`event_photo_categories?event_id=eq.${event.id}&select=id,name,sort_order&order=sort_order.asc,name.asc`),
     ])
     const assetsByPhoto = new Map(assets.map((asset) => [asset.photo_id, asset]))
@@ -119,6 +121,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
           slipUrl,
           slipUploadedAt: order.payment_slip_uploaded_at,
           reviewNote: order.payment_review_note,
+          autoCheckNote: order.slip_auto_check_note,
+          transRef: order.slip_trans_ref,
         }
       })),
     })

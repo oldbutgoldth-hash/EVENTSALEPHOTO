@@ -24,7 +24,7 @@ import {
   Trash2,
   XCircle,
 } from 'lucide-react'
-import { DEFAULT_PRICE_TIERS, formatBaht } from '../../lib/pricing'
+import { DEFAULT_PRICE_TIERS, formatBaht, formatBahtExact } from '../../lib/pricing'
 import { addDaysToLocalDateTime, addHoursToLocalDateTime, formatThaiDateTime, localDateTimeToIso, toDateTimeLocal, type EventLifecycleStatus } from '../../lib/eventLifecycle'
 import { deleteCategory, deleteEvent, deletePhoto, renameCategory, saveEvent } from '../../services/admin'
 import { reviewPayment } from '../../services/payment'
@@ -56,6 +56,8 @@ type AdminOrder = {
   slipUrl: string | null
   slipUploadedAt: string | null
   reviewNote: string | null
+  autoCheckNote?: string | null
+  transRef?: string | null
 }
 
 type AdminEvent = {
@@ -908,7 +910,7 @@ export function AdminDashboard() {
                 <tr key={order.id} className="bg-white">
                   <td className="border-y-2 border-l-2 border-pencil px-3 py-3">{order.orderNumber}</td>
                   <td className="border-y-2 border-pencil">{order.count} รูป</td>
-                  <td className="border-y-2 border-pencil">{formatBaht(order.total)}</td>
+                  <td className="border-y-2 border-pencil">{formatBahtExact(order.total)}</td>
                   <td className="border-y-2 border-r-2 border-pencil py-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className={`${order.status === 'ชำระแล้ว' ? 'bg-[#d9f7df]' : order.paymentStatus === 'rejected' ? 'bg-[#ffe4e4]' : 'bg-sticky'} border-2 border-pencil px-3 py-1`} style={{ borderRadius: radii.wobblySm }}>{order.status}</span>
@@ -918,6 +920,11 @@ export function AdminDashboard() {
                         <button disabled={reviewingOrderId === order.id} onClick={() => reviewOrder(order, 'reject')} className="inline-flex min-h-10 items-center gap-1 border-2 border-pencil bg-[#ffe4e4] px-3 font-bold disabled:opacity-50"><XCircle size={18} /> ไม่ผ่าน</button>
                       </>}
                     </div>
+                    {order.autoCheckNote && (
+                      <p className={`mt-2 max-w-md font-body text-base ${order.autoCheckNote.includes('✅') ? 'text-[#218b3a]' : 'text-pencil/55'}`}>
+                        🤖 {order.autoCheckNote}
+                      </p>
+                    )}
                   </td>
                 </tr>
               ))}</tbody>

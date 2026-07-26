@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AlertCircle, ArrowLeft, CheckCircle2, Clock3, Download, ImagePlus, LoaderCircle, RefreshCw, ShieldCheck, Upload } from 'lucide-react'
 import { radii } from '../lib/designTokens'
-import { formatBaht } from '../lib/pricing'
+import { formatBahtExact } from '../lib/pricing'
 import { uploadPaymentSlip } from '../services/payment'
 import { QrCodeImage } from './QrCodeImage'
 import { SketchButton } from './SketchButton'
@@ -104,9 +104,9 @@ export function OrderStatusPage({ token }: { token: string }) {
               {state.promptPayPayload && <QrCodeImage value={state.promptPayPayload} className="mx-auto mt-5 aspect-square w-full max-w-[280px] border-[3px] border-pencil bg-white p-3 shadow-hard" />}
               <div className="mx-auto mt-5 max-w-xs border-2 border-dashed border-pencil bg-sticky p-4" style={{ borderRadius: radii.wobblySm }}>
                 <p className="font-body text-lg">ยอดที่ต้องชำระ</p>
-                <p className="font-heading text-5xl font-bold text-marker">{formatBaht(state.amount)}</p>
+                <p className="font-heading text-5xl font-bold text-marker">{formatBahtExact(state.amount)}</p>
               </div>
-              <p className="mt-4 font-body text-lg text-pencil/60">ตรวจชื่อบัญชีและยอดเงินก่อนกดยืนยันในแอปธนาคาร</p>
+              <p className="mt-4 font-body text-lg text-pencil/60">โอนตามยอดนี้ให้ตรงทศนิยมทุกสตางค์ เพื่อให้ช่างภาพตรวจสอบสลิปได้ง่ายและรวดเร็วขึ้น</p>
             </SketchCard>
 
             <SketchCard decoration="tack" className="p-6">

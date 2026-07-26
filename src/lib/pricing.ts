@@ -31,6 +31,18 @@ export function formatBaht(value: number): string {
   }).format(value)
 }
 
+// Orders carry a few random extra satang (e.g. 100.12 instead of 100) so every
+// order has a near-unique amount to transfer — this formatter must not round
+// that away, or the customer/admin can't see the exact figure to match a slip to.
+export function formatBahtExact(value: number): string {
+  return new Intl.NumberFormat('th-TH', {
+    style: 'currency',
+    currency: 'THB',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value)
+}
+
 export function unitPrice(tier: PriceTier): number {
   return tier.price / tier.count
 }

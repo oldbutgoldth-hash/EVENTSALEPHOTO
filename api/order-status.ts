@@ -28,7 +28,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       orderNumber: order.order_number,
       eventTitle: order.event_photo_events.title,
       paymentStatus: order.payment_status,
-      amount: Math.round(order.amount_satang / 100),
+      amount: order.amount_satang / 100,
       downloadExpiresAt: order.download_expires_at,
       slipUploadedAt: order.payment_slip_uploaded_at,
       reviewNote: order.payment_review_note,

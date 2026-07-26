@@ -33,7 +33,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       checkoutUrl: orderUrl,
       publicToken: order.public_token,
       orderNumber: order.order_number,
-      amount: Math.round(order.amount_satang / 100),
+      amount: order.amount_satang / 100,
       promptPayPayload: createPromptPayPayload(promptPayId, order.amount_satang, order.order_number),
     })
   } catch (error) {

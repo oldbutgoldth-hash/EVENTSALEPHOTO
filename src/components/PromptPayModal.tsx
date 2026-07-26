@@ -61,6 +61,7 @@ export function PromptPayModal({ open, tier, selectedIds, shareToken, onClose, o
         <p className="sticky-tag mb-3 inline-block -rotate-2">พร้อมเพย์ + แนบสลิป</p>
         <h2 id="payment-title" className="pr-10 font-heading text-4xl font-bold leading-tight">ยืนยันรายการที่เลือก</h2>
         <p className="mt-2 font-body text-xl text-pencil/70">แพ็ก {tier.count} รูป · ยอดชำระ {formatBaht(tier.price)}</p>
+        <p className="mt-1 font-body text-base text-pencil/50">ยอดจริงหน้าชำระเงินจะมีเศษสตางค์เพิ่มเล็กน้อย (เช่น .12 บาท) เพื่อให้ตรวจสลิปง่ายขึ้น</p>
 
         <div className="my-6 grid gap-3">
           {[
