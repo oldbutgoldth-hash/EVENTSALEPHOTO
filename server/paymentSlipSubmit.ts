@@ -1,12 +1,12 @@
 import crypto from 'node:crypto'
 import { queryValue, supabaseAdmin, supabaseRest, type ApiRequest, type ApiResponse } from './utils.js'
-import { verifySlipWithSlipOk } from './slipVerification.js'
+import { verifySlipWithSlip2Go } from './slipVerification.js'
 import { notifyTelegram } from './notify.js'
 
 type OrderRow = { id: string; order_number: string; payment_status: string; payment_slip_path: string | null; amount_satang: number }
 const allowedTypes = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const maxSlipBytes = 6 * 1024 * 1024
-const autoRejectOutcomes = new Set(['duplicate', 'amount_mismatch', 'wrong_account'])
+const autoRejectOutcomes = new Set(['duplicate', 'amount_mismatch', 'wrong_account', 'invalid_slip'])
 
 export default async function handler(req: ApiRequest, res: ApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' })
@@ -60,7 +60,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         // account + reuse), so a "verified" outcome is trustworthy enough to skip the
         // manual click entirely. Skipped automatically if SLIP2GO_SECRET_KEY isn't
         // configured — falls back to the photographer's manual review as before.
-        const check = await verifySlipWithSlipOk(bytes, body.contentType, order.amount_satang / 100)
+        const check = await verifySlipWithSlip2Go(bytes, body.contentType, order.amount_satang / 100)
         autoCheckNote = check.note
         if ('transRef' in check) transRef = check.transRef || null
         if (autoRejectOutcomes.has(check.outcome)) slipStatus = 'rejected'
@@ -116,6 +116,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     // for the photographer to approve by hand — the slip submission itself still
     // succeeds either way.
     let autoApproved = false
+    let autoApprovalError: string | null = null
     if (autoApprove) {
       try {
         const reviewed = await supabaseRest<Array<{ payment_status: string }>>('rpc/review_event_photo_payment', {
@@ -123,8 +124,24 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
           body: JSON.stringify({ p_order_id: order.id, p_decision: 'approve', p_note: autoCheckNote }),
         })
         autoApproved = reviewed[0]?.payment_status === 'paid'
-      } catch {
-        // fall back to manual review — order stays 'under_review'
+        if (!autoApproved) autoApprovalError = 'RPC ตอบกลับแต่สถานะไม่เป็น paid'
+      } catch (error) {
+        autoApprovalError = error instanceof Error ? error.message : 'AUTO_APPROVAL_FAILED'
+      }
+
+      if (!autoApproved) {
+        console.error('SLIP_AUTO_APPROVAL_FAILED', {
+          orderId: order.id,
+          orderNumber: order.order_number,
+          error: autoApprovalError,
+        })
+        const diagnosticNote = `${autoCheckNote || 'Slip2Go ตรวจผ่าน'} · แต่ระบบปลดล็อกอัตโนมัติไม่สำเร็จ (${autoApprovalError || 'UNKNOWN'}) ต้องตรวจ/อนุมัติในหลังบ้าน`
+        autoCheckNote = diagnosticNote
+        await supabaseRest<Array<{ id: string }>>(`event_photo_orders?id=eq.${order.id}&payment_status=eq.under_review&select=id`, {
+          method: 'PATCH',
+          headers: { prefer: 'return=representation' },
+          body: JSON.stringify({ slip_auto_check_note: diagnosticNote }),
+        }).catch((error) => console.error('SLIP_AUTO_APPROVAL_NOTE_UPDATE_FAILED', error))
       }
     }
 
@@ -139,13 +156,15 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         ? `❌ สลิปถูกปฏิเสธอัตโนมัติ\nคำสั่งซื้อ ${order.order_number} · ยอด ${amountText} บาท\n${autoCheckNote || ''}`
         : autoApproved
           ? `✅ อนุมัติอัตโนมัติแล้ว ไม่ต้องทำอะไรเพิ่ม\nคำสั่งซื้อ ${order.order_number} · ยอด ${amountText} บาท\n${autoCheckNote || ''}`
-          : `🧾 มีสลิปใหม่รอตรวจ\nคำสั่งซื้อ ${order.order_number} · ยอด ${amountText} บาท\nเปิดหน้าแอดมินเพื่อตรวจสอบ`,
+          : autoApprovalError
+            ? `⚠️ Slip2Go ตรวจผ่าน แต่ปลดล็อกอัตโนมัติไม่สำเร็จ\nคำสั่งซื้อ ${order.order_number} · ยอด ${amountText} บาท\n${autoCheckNote || ''}`
+            : `🧾 มีสลิปใหม่รอตรวจ\nคำสั่งซื้อ ${order.order_number} · ยอด ${amountText} บาท\n${autoCheckNote || ''}`,
     )
 
     if (slipStatus === 'rejected') {
       return res.status(200).json({ ok: true, autoRejected: true, reason: autoCheckNote })
     }
-    return res.status(200).json({ ok: true, autoApproved })
+    return res.status(200).json({ ok: true, autoApproved, autoApprovalFailed: Boolean(autoApprovalError) })
   } catch (error) {
     return res.status(500).json({ error: error instanceof Error ? error.message : 'SLIP_SUBMIT_FAILED' })
   }

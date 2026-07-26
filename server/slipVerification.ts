@@ -1,80 +1,87 @@
-// Automatic slip verification via Slip2Go (https://connect.slip2go.com/api),
-// a sibling product to SlipOK with its own REST API and a different contract
-// (Bearer secret key, no branch id, JSON "payload" alongside the file). It
-// reads the real bank QR embedded in the slip image — not just the picture —
-// so a clean success response with a matching amount is trustworthy enough
-// to skip the manual review click.
+// Automatic slip verification via Slip2Go API Connect.
 //
-// Configure with SLIP2GO_SECRET_KEY (from the shop dashboard's
-// API Connect > Authentication page). If it isn't set, verification is
-// skipped and treated as inconclusive so the existing manual-review flow
-// keeps working exactly as before.
+// Important contract details (verified against the current Slip2Go guide):
+// - Upload slip images to POST /api/verify-slip/qr-image/info.
+// - Send the API secret directly in the Authorization header. Do NOT add
+//   a "Bearer " prefix.
+// - When check conditions are supplied, a fully valid slip returns code
+//   200200. Code 200000 only means the bank found the slip; it does not prove
+//   that the requested receiver/amount/duplicate conditions passed.
 //
-// Note: this only auto-approves on a clean, amount-matching success — it does
-// not auto-reject on Slip2Go-reported mismatches yet, since the exact
-// non-success codes for "wrong amount"/"wrong account" weren't available to
-// confirm against. Anything that isn't a confirmed match just falls back to
-// manual review, which is always safe. Reuse is still caught two ways: the
-// free SHA-256 image-hash check (in paymentSlipSubmit.ts, independent of this
-// file) and, new here, a check on the bank's own transaction reference.
+// Configure with SLIP2GO_SECRET_KEY and a 10-digit phone PROMPTPAY_ID.
+// Anything that cannot be proved safe falls back to manual review.
 
 export type SlipCheckResult =
   | { outcome: 'verified'; transRef: string; amount: number; note: string }
   | { outcome: 'duplicate'; note: string; transRef?: string }
   | { outcome: 'amount_mismatch'; note: string; transRef?: string }
   | { outcome: 'wrong_account'; note: string; transRef?: string }
+  | { outcome: 'invalid_slip'; note: string; transRef?: string }
   | { outcome: 'inconclusive'; note: string }
 
 type Slip2GoResponse = {
-  code: string
-  message: string
+  code?: string
+  message?: string
   data?: {
+    referenceId?: string
     transRef?: string
     amount?: number
   }
 }
 
-export async function verifySlipWithSlipOk(
+const supportedAutoVerifyTypes = new Set(['image/jpeg', 'image/png'])
+
+function transactionReference(result: Slip2GoResponse): string {
+  return result.data?.transRef?.trim() || result.data?.referenceId?.trim() || ''
+}
+
+export async function verifySlipWithSlip2Go(
   fileBytes: Uint8Array,
   contentType: string,
   expectedAmountBaht: number,
 ): Promise<SlipCheckResult> {
-  // .trim() guards against a stray trailing space/newline from copy-pasting the
-  // key out of the Slip2Go dashboard into Vercel — a very common cause of a
-  // silent 401 that has nothing to do with the key itself being wrong.
   const secretKey = process.env.SLIP2GO_SECRET_KEY?.trim()
   if (!secretKey) {
-    return { outcome: 'inconclusive', note: 'ยังไม่ได้ตั้งค่าระบบตรวจสลิปอัตโนมัติ (SLIP2GO_SECRET_KEY) — ตรวจด้วยตนเอง' }
+    return {
+      outcome: 'inconclusive',
+      note: 'ยังไม่ได้ตั้งค่า SLIP2GO_SECRET_KEY — ต้องตรวจสลิปด้วยตนเอง',
+    }
+  }
+
+  // Slip2Go documents JPG/JPEG/PNG for the image endpoint. Keep WebP upload
+  // compatible with the old manual flow, but do not pretend it was verified.
+  if (!supportedAutoVerifyTypes.has(contentType)) {
+    return {
+      outcome: 'inconclusive',
+      note: 'ไฟล์ชนิดนี้อัปโหลดได้ แต่ Slip2Go ตรวจอัตโนมัติรองรับเฉพาะ JPG หรือ PNG — ต้องตรวจด้วยตนเอง',
+    }
+  }
+
+  const receiverPhone = (process.env.PROMPTPAY_ID || '').replace(/\D/g, '')
+  if (receiverPhone.length !== 10) {
+    return {
+      outcome: 'inconclusive',
+      note: 'PROMPTPAY_ID ต้องเป็นเบอร์โทรศัพท์ 10 หลัก จึงจะตรวจบัญชีผู้รับอัตโนมัติได้',
+    }
   }
 
   try {
-    // PROMPTPAY_ID is reused here (not a separate env var) — it's already the
-    // phone number the shop's PromptPay QR is generated from, in the same
-    // plain 10-digit form Slip2Go expects for accountType 02001 (PromptPay by
-    // phone). If the shop ever switches to a national-ID-based PromptPay
-    // account, this receiver check should be revisited (different accountType).
-    const receiverPhone = (process.env.PROMPTPAY_ID || '').replace(/\D/g, '')
-    const payload: Record<string, unknown> = {
+    const payload = {
       checkDuplicate: true,
+      checkReceiver: [{ accountType: '02001', accountNumber: receiverPhone }],
       checkAmount: { type: 'eq', amount: expectedAmountBaht.toFixed(2) },
-    }
-    if (receiverPhone.length === 10) {
-      payload.checkReceiver = [{ accountType: '02001', accountNumber: receiverPhone }]
     }
 
     const form = new FormData()
-    form.append('file', new Blob([fileBytes], { type: contentType }), 'slip.jpg')
+    form.append('file', new Blob([fileBytes], { type: contentType }), contentType === 'image/png' ? 'slip.png' : 'slip.jpg')
     form.append('payload', JSON.stringify(payload))
 
-    // Confirmed against Slip2Go's own "Authentication" page code sample:
-    // headers: { Authorization: 'Bearer {secretKey}' } — the Bearer prefix IS
-    // required (an earlier attempt without it produced "Authentication Token
-    // Mismatch").
     const response = await fetch('https://connect.slip2go.com/api/verify-slip/qr-image/info', {
       method: 'POST',
-      headers: { authorization: `Bearer ${secretKey}` },
+      headers: { Authorization: secretKey },
       body: form,
     })
+
     const responseText = await response.text()
     const result = (() => {
       try {
@@ -83,44 +90,92 @@ export async function verifySlipWithSlipOk(
         return null
       }
     })()
+
+    console.info('SLIP2GO_VERIFY_RESULT', {
+      httpStatus: response.status,
+      code: result?.code || null,
+      message: result?.message || null,
+      hasData: Boolean(result?.data),
+    })
+
     if (!response.ok || !result) {
       const detail = result?.message ? ` — ${result.message}` : ''
       return {
         outcome: 'inconclusive',
-        note: `ระบบตรวจสลิปอัตโนมัติตอบกลับผิดปกติ (HTTP ${response.status}${detail}) กรุณาตรวจด้วยตนเอง`,
+        note: `Slip2Go ตอบกลับผิดปกติ (HTTP ${response.status}${detail}) — ต้องตรวจด้วยตนเอง`,
       }
     }
 
-    const transRef = result.data?.transRef
-    if (result.code !== '200000' || !result.data) {
-      return {
-        outcome: 'inconclusive',
-        note: result.message ? `ตรวจอัตโนมัติไม่สำเร็จ: ${result.message}` : 'ระบบตรวจสลิปอัตโนมัติไม่สามารถยืนยันได้ กรุณาตรวจด้วยตนเอง',
-      }
+    const transRef = transactionReference(result)
+
+    switch (result.code) {
+      case '200401':
+        return { outcome: 'wrong_account', transRef: transRef || undefined, note: 'บัญชีผู้รับในสลิปไม่ตรงกับพร้อมเพย์ของร้าน' }
+      case '200402':
+        return { outcome: 'amount_mismatch', transRef: transRef || undefined, note: `ยอดในสลิปไม่ตรงกับยอดที่ต้องชำระ ${expectedAmountBaht.toFixed(2)} บาท` }
+      case '200404':
+        return { outcome: 'invalid_slip', transRef: transRef || undefined, note: 'ไม่พบข้อมูลสลิปนี้ในระบบธนาคาร' }
+      case '200500':
+        return { outcome: 'invalid_slip', transRef: transRef || undefined, note: 'Slip2Go ระบุว่าสลิปเสียหรืออาจเป็นสลิปปลอม' }
+      case '200501':
+        return { outcome: 'duplicate', transRef: transRef || undefined, note: 'Slip2Go ตรวจพบว่าสลิปนี้ถูกใช้ซ้ำ' }
+      case '200502':
+        return { outcome: 'inconclusive', note: 'ธนาคารตอบกลับผิดปกติ กรุณาตรวจสลิปด้วยตนเองหรือลองใหม่ภายหลัง' }
+      case '200000':
+        // The bank found the slip, but the current API uses 200200 to confirm
+        // that requested conditions passed. Never auto-unlock on 200000 alone.
+        return {
+          outcome: 'inconclusive',
+          note: 'ธนาคารพบสลิป แต่ Slip2Go ยังไม่ได้ยืนยันเงื่อนไขยอดและบัญชีผู้รับ — ต้องตรวจด้วยตนเอง',
+        }
+      case '200200':
+        break
+      default:
+        return {
+          outcome: 'inconclusive',
+          note: result.message
+            ? `Slip2Go ยังไม่ยืนยันสลิป: ${result.message} (${result.code || 'NO_CODE'})`
+            : `Slip2Go ยังไม่ยืนยันสลิป (${result.code || 'NO_CODE'})`,
+        }
     }
 
-    // Belt-and-suspenders: data.amount isn't masked (unlike account numbers),
-    // so re-confirm it ourselves even though checkAmount already asked
-    // Slip2Go to do the same check server-side.
+    if (!result.data) {
+      return { outcome: 'inconclusive', note: 'Slip2Go แจ้งว่าสลิปผ่าน แต่ไม่มีข้อมูลธุรกรรมกลับมา — ต้องตรวจด้วยตนเอง' }
+    }
+
     const slipAmount = result.data.amount
-    if (typeof slipAmount !== 'number' || Math.round(slipAmount * 100) !== Math.round(expectedAmountBaht * 100)) {
+    if (typeof slipAmount !== 'number' || !Number.isFinite(slipAmount)) {
+      return { outcome: 'inconclusive', note: 'Slip2Go ไม่ส่งยอดเงินกลับมา — ต้องตรวจด้วยตนเอง' }
+    }
+
+    if (Math.round(slipAmount * 100) !== Math.round(expectedAmountBaht * 100)) {
       return {
         outcome: 'amount_mismatch',
-        note: `ยอดในสลิป (${slipAmount ?? '-'} บาท) ไม่ตรงกับยอดที่ต้องชำระ (${expectedAmountBaht.toFixed(2)} บาท)`,
-        transRef,
+        note: `ยอดในสลิป ${slipAmount.toFixed(2)} บาท ไม่ตรงกับยอดที่ต้องชำระ ${expectedAmountBaht.toFixed(2)} บาท`,
+        transRef: transRef || undefined,
+      }
+    }
+
+    if (!transRef) {
+      return {
+        outcome: 'inconclusive',
+        note: 'Slip2Go ยืนยันยอดและบัญชีแล้ว แต่ไม่มีเลขอ้างอิงธุรกรรม จึงยังไม่ปลดล็อกอัตโนมัติเพื่อความปลอดภัย',
       }
     }
 
     return {
       outcome: 'verified',
-      transRef: transRef || '',
+      transRef,
       amount: slipAmount,
-      note: `ตรวจสอบอัตโนมัติผ่าน ✅ ยอด ${slipAmount.toFixed(2)} บาท ตรงกับราคา · เลขอ้างอิง ${transRef || '-'}`,
+      note: `ตรวจสอบผ่านอัตโนมัติ ✅ ยอด ${slipAmount.toFixed(2)} บาท บัญชีผู้รับถูกต้อง · เลขอ้างอิง ${transRef}`,
     }
   } catch (error) {
+    console.error('SLIP2GO_VERIFY_EXCEPTION', error)
     return {
       outcome: 'inconclusive',
-      note: error instanceof Error ? `เรียกระบบตรวจสลิปอัตโนมัติไม่สำเร็จ: ${error.message}` : 'เรียกระบบตรวจสลิปอัตโนมัติไม่สำเร็จ',
+      note: error instanceof Error
+        ? `เรียก Slip2Go ไม่สำเร็จ: ${error.message} — ต้องตรวจด้วยตนเอง`
+        : 'เรียก Slip2Go ไม่สำเร็จ — ต้องตรวจด้วยตนเอง',
     }
   }
 }
