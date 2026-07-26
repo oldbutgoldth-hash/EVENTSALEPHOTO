@@ -39,7 +39,10 @@ export async function verifySlipWithSlipOk(
   contentType: string,
   expectedAmountBaht: number,
 ): Promise<SlipCheckResult> {
-  const secretKey = process.env.SLIP2GO_SECRET_KEY
+  // .trim() guards against a stray trailing space/newline from copy-pasting the
+  // key out of the Slip2Go dashboard into Vercel — a very common cause of a
+  // silent 401 that has nothing to do with the key itself being wrong.
+  const secretKey = process.env.SLIP2GO_SECRET_KEY?.trim()
   if (!secretKey) {
     return { outcome: 'inconclusive', note: 'ยังไม่ได้ตั้งค่าระบบตรวจสลิปอัตโนมัติ (SLIP2GO_SECRET_KEY) — ตรวจด้วยตนเอง' }
   }
@@ -81,9 +84,10 @@ export async function verifySlipWithSlipOk(
       }
     })()
     if (!response.ok || !result) {
+      const detail = result?.message ? ` — ${result.message}` : ''
       return {
         outcome: 'inconclusive',
-        note: `ระบบตรวจสลิปอัตโนมัติตอบกลับผิดปกติ (HTTP ${response.status}) กรุณาตรวจด้วยตนเอง`,
+        note: `ระบบตรวจสลิปอัตโนมัติตอบกลับผิดปกติ (HTTP ${response.status}${detail}) กรุณาตรวจด้วยตนเอง`,
       }
     }
 
