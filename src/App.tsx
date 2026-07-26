@@ -451,6 +451,7 @@ function StorefrontApp() {
         open={paymentOpen && saleOpen}
         tier={exactPackage}
         selectedIds={[...selectedIds]}
+        shareToken={event.shareToken || ''}
         onClose={() => setPaymentOpen(false)}
         onPaid={() => {
           setPaymentOpen(false)

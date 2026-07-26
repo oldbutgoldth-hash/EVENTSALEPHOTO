@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ArrowRight, LoaderCircle, Phone, ShieldCheck, Upload, X } from 'lucide-react'
 import type { PriceTier } from '../lib/pricing'
 import { formatBaht } from '../lib/pricing'
-import { isLiveMode, runtimeConfig } from '../lib/runtimeConfig'
+import { isLiveMode } from '../lib/runtimeConfig'
 import { createLiveCheckout } from '../services/checkout'
 import { SketchButton } from './SketchButton'
 import { SketchCard } from './SketchCard'
@@ -12,11 +12,12 @@ type Props = {
   open: boolean
   tier?: PriceTier
   selectedIds: Array<number | string>
+  shareToken: string
   onClose: () => void
   onPaid: () => void
 }
 
-export function PromptPayModal({ open, tier, selectedIds, onClose, onPaid }: Props) {
+export function PromptPayModal({ open, tier, selectedIds, shareToken, onClose, onPaid }: Props) {
   const [phone, setPhone] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -28,11 +29,15 @@ export function PromptPayModal({ open, tier, selectedIds, onClose, onPaid }: Pro
       onPaid()
       return
     }
+    if (!shareToken) {
+      setError('ไม่พบอัลบั้มนี้ในระบบ กรุณาเปิดลิงก์อัลบั้มใหม่อีกครั้ง')
+      return
+    }
     setBusy(true)
     setError('')
     try {
       const result = await createLiveCheckout({
-        shareToken: runtimeConfig.eventShareToken,
+        shareToken,
         photoIds: selectedIds,
         tier,
         buyerPhone: phone,
