@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import ImageKit from '@imagekit/nodejs'
 import {
   clearAdminCookie,
   createAdminCookie,
@@ -40,11 +41,10 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   if (action === 'imagekit') {
     if (req.method !== 'GET') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' })
     if (!isAdminRequest(req)) return res.status(401).json({ error: 'ADMIN_LOGIN_REQUIRED' })
-    const token = crypto.randomUUID()
-    const expire = Math.floor(Date.now() / 1000) + 20 * 60
-    const signature = crypto.createHmac('sha1', requiredEnv('IMAGEKIT_PRIVATE_KEY')).update(`${token}${expire}`).digest('hex')
+    const imagekit = new ImageKit({ privateKey: requiredEnv('IMAGEKIT_PRIVATE_KEY').trim() })
+    const { token, expire, signature } = imagekit.helper.getAuthenticationParameters()
     res.setHeader('cache-control', 'no-store')
-    return res.status(200).json({ token, expire, signature, publicKey: requiredEnv('IMAGEKIT_PUBLIC_KEY') })
+    return res.status(200).json({ token, expire, signature, publicKey: requiredEnv('IMAGEKIT_PUBLIC_KEY').trim() })
   }
 
   return res.status(404).json({ error: 'ADMIN_AUTH_ACTION_NOT_FOUND' })
