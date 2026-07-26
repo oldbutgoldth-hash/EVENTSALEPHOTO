@@ -17,7 +17,7 @@ export function SketchButton({ children, variant = 'primary', className = '', ..
     <button
       {...props}
       style={{ borderRadius: radii.wobbly }}
-      className={`min-h-12 border-[3px] px-5 py-2 font-body text-xl font-bold transition-all duration-100 active:translate-x-1 active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-40 ${variants[variant]} ${className}`}
+      className={`min-h-12 border-[3px] px-5 py-2 font-body text-xl font-bold transition-all duration-150 ease-out active:translate-x-1 active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-40 ${variants[variant]} ${className}`}
     >
       {children}
     </button>

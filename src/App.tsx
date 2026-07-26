@@ -48,6 +48,8 @@ function StorefrontApp() {
   const [mobileMenu, setMobileMenu] = useState(false)
   const [limitNotice, setLimitNotice] = useState('')
   const [clock, setClock] = useState(() => Date.now())
+  const [visibleCount, setVisibleCount] = useState(12)
+  const [showAllAlbums, setShowAllAlbums] = useState(false)
 
   useEffect(() => {
     const timer = window.setInterval(() => setClock(Date.now()), 30_000)
@@ -101,6 +103,14 @@ function StorefrontApp() {
       return matchCategory && matchQuery
     })
   }, [category, photos, query])
+
+  // Keep the gallery from dumping every photo on screen at once — start with a
+  // manageable first page and let people ask for more, instead of one huge wall
+  // of thumbnails that makes the page feel packed.
+  useEffect(() => { setVisibleCount(12) }, [category, query])
+  const visiblePhotos = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount])
+  const hasMorePhotos = filtered.length > visiblePhotos.length
+  const visibleAlbums = showAllAlbums ? albums : albums.slice(0, 6)
 
   const selectedPhotos = useMemo(() => photos.filter((photo) => selectedIds.has(photo.id)), [photos, selectedIds])
   const exactPackage = getTierForCount(priceTiers, selectedIds.size)
@@ -261,35 +271,44 @@ function StorefrontApp() {
         </section>
 
         {isLiveMode && (
-          <section id="albums" className="border-y-2 border-dashed border-pencil/35 bg-white/65 py-16">
+          <section id="albums" className="border-y-2 border-dashed border-pencil/35 bg-white/65 py-20 md:py-24">
             <div className="mx-auto max-w-5xl px-6">
-              <div className="mb-9">
+              <div className="mb-11">
                 <p className="font-body text-xl text-marker">สร้างและจัดการจากหน้าแอดมิน</p>
                 <h2 className="font-heading text-5xl font-bold md:text-6xl">อัลบั้มทั้งหมด</h2>
                 <p className="mt-2 font-body text-xl text-pencil/65">อัลบั้มที่เปิดใช้งานจะปรากฏตรงนี้โดยอัตโนมัติ</p>
               </div>
               {albums.length ? (
-                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                  {albums.map((album, index) => (
-                    <a
-                      key={album.id}
-                      href={`/?event=${encodeURIComponent(album.shareToken)}#gallery`}
-                      className={`${index % 2 ? 'rotate-[.5deg]' : '-rotate-[.5deg]'} block border-[3px] border-pencil bg-white p-3 shadow-hard transition-transform hover:rotate-0`}
-                      style={{ borderRadius: radii.wobblyMd }}
-                    >
-                      {album.coverUrl ? (
-                        <img src={album.coverUrl} alt={album.title} className="aspect-[4/3] w-full object-cover" style={{ borderRadius: radii.wobblySm }} />
-                      ) : (
-                        <div className="grid aspect-[4/3] place-items-center bg-muted" style={{ borderRadius: radii.wobblySm }}><Images size={48} strokeWidth={2.3} /></div>
-                      )}
-                      <div className="p-3">
-                        <h3 className="font-heading text-3xl font-bold">{album.title}</h3>
-                        <p className="mt-1 font-body text-lg text-pencil/65">{[album.eventDate, album.venue].filter(Boolean).join(' · ') || 'ยังไม่ระบุวันที่และสถานที่'}</p>
-                        <p className="mt-3 font-body text-lg font-bold text-pen">{album.photoCount.toLocaleString('th-TH')} รูป · เปิดอัลบั้ม</p>
-                      </div>
-                    </a>
-                  ))}
-                </div>
+                <>
+                  <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
+                    {visibleAlbums.map((album, index) => (
+                      <a
+                        key={album.id}
+                        href={`/?event=${encodeURIComponent(album.shareToken)}#gallery`}
+                        className={`${index % 2 ? 'rotate-[.4deg]' : '-rotate-[.4deg]'} block border-[3px] border-pencil bg-white p-3 shadow-elevated transition-all duration-150 ease-out hover:-translate-y-1 hover:rotate-0 hover:shadow-hard`}
+                        style={{ borderRadius: radii.wobblyMd }}
+                      >
+                        {album.coverUrl ? (
+                          <img src={album.coverUrl} alt={album.title} className="aspect-[4/3] w-full object-cover" style={{ borderRadius: radii.wobblySm }} />
+                        ) : (
+                          <div className="grid aspect-[4/3] place-items-center bg-muted" style={{ borderRadius: radii.wobblySm }}><Images size={48} strokeWidth={2.3} /></div>
+                        )}
+                        <div className="p-3">
+                          <h3 className="font-heading text-3xl font-bold">{album.title}</h3>
+                          <p className="mt-1 font-body text-lg text-pencil/65">{[album.eventDate, album.venue].filter(Boolean).join(' · ') || 'ยังไม่ระบุวันที่และสถานที่'}</p>
+                          <p className="mt-3 font-body text-lg font-bold text-pen">{album.photoCount.toLocaleString('th-TH')} รูป · เปิดอัลบั้ม</p>
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                  {albums.length > 6 && (
+                    <div className="mt-9 text-center">
+                      <SketchButton variant="secondary" onClick={() => setShowAllAlbums((value) => !value)}>
+                        {showAllAlbums ? 'ย่อรายการ' : `ดูอัลบั้มทั้งหมด (${albums.length})`}
+                      </SketchButton>
+                    </div>
+                  )}
+                </>
               ) : !catalogLoading && (
                 <SketchCard className="p-8 text-center">
                   <Images className="mx-auto" size={46} strokeWidth={2.4} />
@@ -332,8 +351,8 @@ function StorefrontApp() {
         {saleOpen && <PricingBoard tiers={priceTiers} />}
 
         {!paid ? (
-          <section id="gallery" className="mx-auto max-w-5xl px-6 py-20">
-            <div className="mb-10 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+          <section id="gallery" className={`mx-auto max-w-5xl px-6 py-20 md:py-24 ${saleOpen && selectedIds.size > 0 ? 'pb-36' : ''}`}>
+            <div className="mb-12 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
               <div>
                 <p className="font-body text-xl text-marker">{saleOpen ? 'อัลบั้มล่าสุด' : 'อัลบั้มย้อนหลัง'}</p>
                 <h2 className="font-heading text-5xl font-bold md:text-6xl">{saleOpen ? 'เลือกรูปที่ชอบ' : 'ดู Preview และจดรหัสภาพ'}</h2>
@@ -352,13 +371,13 @@ function StorefrontApp() {
               </div>
             </div>
 
-            <div className="mb-10 flex gap-3 overflow-x-auto pb-3">
+            <div className="mb-11 flex gap-3 overflow-x-auto pb-3">
               {categories.map((item, index) => (
                 <button
                   type="button"
                   key={item}
                   onClick={() => setCategory(item)}
-                  className={`min-h-12 shrink-0 border-[3px] border-pencil px-5 font-body text-xl font-bold shadow-hard transition-all duration-100 hover:-rotate-1 active:translate-x-1 active:translate-y-1 active:shadow-none ${category === item ? 'bg-marker text-white' : index % 2 ? 'bg-sticky' : 'bg-white'}`}
+                  className={`min-h-12 shrink-0 border-[3px] border-pencil px-5 font-body text-xl font-bold shadow-hard transition-all duration-150 ease-out hover:-rotate-1 active:translate-x-1 active:translate-y-1 active:shadow-none ${category === item ? 'bg-marker text-white' : index % 2 ? 'bg-sticky' : 'bg-white'}`}
                   style={{ borderRadius: radii.wobbly }}
                 >
                   {item}
@@ -366,11 +385,19 @@ function StorefrontApp() {
               ))}
             </div>
 
-            <div className="columns-2 gap-3 sm:columns-3 sm:gap-5 lg:columns-4">
-              {filtered.map((photo) => (
+            <div className="columns-2 gap-4 sm:columns-3 sm:gap-6 lg:columns-4">
+              {visiblePhotos.map((photo) => (
                 <PhotoCard key={photo.id} photo={photo} selected={selectedIds.has(photo.id)} selectable={saleOpen} onToggle={togglePhoto} onPreview={setPreview} />
               ))}
             </div>
+
+            {hasMorePhotos && (
+              <div className="mt-4 text-center">
+                <SketchButton variant="secondary" onClick={() => setVisibleCount((value) => value + 12)}>
+                  โหลดรูปเพิ่ม ({filtered.length - visiblePhotos.length} รูปที่เหลือ)
+                </SketchButton>
+              </div>
+            )}
 
             {filtered.length === 0 && (
               <SketchCard className="mx-auto max-w-xl p-8 text-center">

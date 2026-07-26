@@ -14,7 +14,7 @@ export function PhotoCard({ photo, selected, selectable = true, onToggle, onPrev
   return (
     <article
       style={{ borderRadius: radii.wobblyMd }}
-      className={`group relative mb-6 break-inside-avoid border-[3px] border-pencil bg-white p-2 transition-transform duration-100 hover:rotate-1 ${selected ? '-rotate-1 bg-sticky shadow-hard-lg' : 'rotate-[0.35deg] shadow-hard'}`}
+      className={`group relative mb-6 break-inside-avoid border-[3px] border-pencil bg-white p-2 transition-all duration-150 ease-out hover:-translate-y-0.5 hover:rotate-[.5deg] ${selected ? '-rotate-1 bg-sticky shadow-hard-lg' : 'rotate-[0.35deg] shadow-hard'}`}
     >
       <div className="relative overflow-hidden" style={{ borderRadius: radii.wobblySm }}>
         <img
