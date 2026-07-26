@@ -83,3 +83,17 @@ export async function reviewPayment(orderId: string, decision: 'approve' | 'reje
   const payload = (await response.json().catch(() => ({}))) as { error?: string }
   if (!response.ok) throw new Error(payload.error || 'ตรวจสลิปไม่สำเร็จ')
 }
+
+export type BulkReviewResult = { orderId: string; ok: boolean; paymentStatus?: string; error?: string }
+
+export async function bulkReviewPayments(orderIds: string[], decision: 'approve' | 'reject', note = ''): Promise<BulkReviewResult[]> {
+  const response = await fetch('/api/admin-review-payment', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ orderIds, decision, note }),
+  })
+  const payload = (await response.json().catch(() => ({}))) as { results?: BulkReviewResult[]; error?: string }
+  if (!response.ok || !payload.results) throw new Error(payload.error || 'ตรวจสลิปแบบกลุ่มไม่สำเร็จ')
+  return payload.results
+}

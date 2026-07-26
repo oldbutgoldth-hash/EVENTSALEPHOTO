@@ -27,7 +27,7 @@ import {
 import { DEFAULT_PRICE_TIERS, formatBaht, formatBahtExact } from '../../lib/pricing'
 import { addDaysToLocalDateTime, addHoursToLocalDateTime, formatThaiDateTime, localDateTimeToIso, toDateTimeLocal, type EventLifecycleStatus } from '../../lib/eventLifecycle'
 import { deleteCategory, deleteEvent, deletePhoto, renameCategory, resetEventOrders, saveEvent } from '../../services/admin'
-import { reviewPayment } from '../../services/payment'
+import { bulkReviewPayments, reviewPayment } from '../../services/payment'
 import { BrandLogo } from '../BrandLogo'
 import { radii } from '../../lib/designTokens'
 import { runtimeConfig } from '../../lib/runtimeConfig'
@@ -144,6 +144,8 @@ export function AdminDashboard() {
   const [dashboardRevenue, setDashboardRevenue] = useState(runtimeConfig.dataMode === 'live' ? 0 : 430)
   const [reviewingOrderId, setReviewingOrderId] = useState('')
   const [deletingPhotoId, setDeletingPhotoId] = useState('')
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set())
+  const [bulkReviewing, setBulkReviewing] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(true)
 
   const eventUrl = `${runtimeConfig.siteUrl}/?event=${encodeURIComponent(shareToken || eventSlug)}`
@@ -395,6 +397,77 @@ export function AdminDashboard() {
       setNotice(cause instanceof Error ? cause.message : 'ตรวจสลิปไม่สำเร็จ')
     } finally {
       setReviewingOrderId('')
+    }
+  }
+
+  const underReviewIds = useMemo(
+    () => dashboardOrders.filter((order) => order.paymentStatus === 'under_review').map((order) => order.id),
+    [dashboardOrders],
+  )
+
+  const toggleOrderSelected = (orderId: string) => {
+    setSelectedOrderIds((current) => {
+      const next = new Set(current)
+      if (next.has(orderId)) next.delete(orderId)
+      else next.add(orderId)
+      return next
+    })
+  }
+
+  const toggleSelectAllUnderReview = () => {
+    setSelectedOrderIds((current) => current.size >= underReviewIds.length && underReviewIds.every((id) => current.has(id))
+      ? new Set()
+      : new Set(underReviewIds))
+  }
+
+  const bulkReview = async (decision: 'approve' | 'reject') => {
+    const orderIds = [...selectedOrderIds]
+    if (!orderIds.length) return
+    if (runtimeConfig.dataMode === 'demo') {
+      setDashboardOrders((items) => items.map((item) => orderIds.includes(item.id) ? {
+        ...item,
+        paymentStatus: decision === 'approve' ? 'paid' : 'rejected',
+        status: decision === 'approve' ? 'ชำระแล้ว' : 'สลิปไม่ผ่าน',
+      } : item))
+      setSelectedOrderIds(new Set())
+      return
+    }
+    const note = decision === 'reject'
+      ? window.prompt(`ระบุเหตุผลที่สลิปไม่ผ่าน (ใช้ข้อความเดียวกันกับทั้ง ${orderIds.length} รายการที่เลือก)`, 'ยอดหรือบัญชีไม่ตรง กรุณาอัปโหลดใหม่') || ''
+      : ''
+    if (decision === 'reject' && !note) return
+    if (!window.confirm(`${decision === 'approve' ? 'อนุมัติ' : 'ปฏิเสธ'}คำสั่งซื้อที่เลือกไว้ ${orderIds.length} รายการ ใช่หรือไม่?`)) return
+
+    setBulkReviewing(true)
+    setNotice('')
+    try {
+      const results = await bulkReviewPayments(orderIds, decision, note)
+      const approvedTotal = dashboardOrders
+        .filter((order) => results.some((result) => result.orderId === order.id && result.ok))
+        .reduce((sum, order) => sum + order.total, 0)
+      setDashboardOrders((items) => items.map((item) => {
+        const result = results.find((entry) => entry.orderId === item.id)
+        if (!result?.ok) return item
+        return {
+          ...item,
+          paymentStatus: decision === 'approve' ? 'paid' : 'rejected',
+          status: decision === 'approve' ? 'ชำระแล้ว' : 'สลิปไม่ผ่าน',
+          reviewNote: note,
+        }
+      }))
+      if (decision === 'approve') setDashboardRevenue((value) => value + approvedTotal)
+      const okCount = results.filter((result) => result.ok).length
+      const failCount = results.length - okCount
+      setNotice(
+        failCount === 0
+          ? `${decision === 'approve' ? 'อนุมัติ' : 'ปฏิเสธ'}สำเร็จทั้งหมด ${okCount} รายการ`
+          : `${decision === 'approve' ? 'อนุมัติ' : 'ปฏิเสธ'}สำเร็จ ${okCount} รายการ ล้มเหลว ${failCount} รายการ (อาจมีคนอื่นตรวจไปแล้ว หรือสลิปหาย)`,
+      )
+      setSelectedOrderIds(new Set())
+    } catch (cause) {
+      setNotice(cause instanceof Error ? cause.message : 'ตรวจสลิปแบบกลุ่มไม่สำเร็จ')
+    } finally {
+      setBulkReviewing(false)
     }
   }
 
@@ -936,11 +1009,45 @@ export function AdminDashboard() {
                 </button>
               )}
             </div>
-            <table className="mt-5 w-full min-w-[620px] border-separate border-spacing-y-2 font-body text-lg">
-              <thead><tr className="text-left"><th className="px-3">เลขคำสั่งซื้อ</th><th>จำนวน</th><th>ยอด</th><th>สถานะ / ตรวจสลิป</th></tr></thead>
+            {selectedOrderIds.size > 0 && (
+              <div className="mt-4 flex flex-wrap items-center gap-2 border-2 border-dashed border-pencil/40 bg-sticky/40 p-3" style={{ borderRadius: radii.wobblySm }}>
+                <span className="font-body text-lg font-bold">เลือกไว้ {selectedOrderIds.size} รายการ</span>
+                <button disabled={bulkReviewing} onClick={() => void bulkReview('approve')} className="inline-flex min-h-10 items-center gap-1 border-2 border-pencil bg-[#d9f7df] px-3 font-bold disabled:opacity-50"><CheckCircle2 size={18} /> อนุมัติที่เลือก</button>
+                <button disabled={bulkReviewing} onClick={() => void bulkReview('reject')} className="inline-flex min-h-10 items-center gap-1 border-2 border-pencil bg-[#ffe4e4] px-3 font-bold disabled:opacity-50"><XCircle size={18} /> ไม่ผ่านที่เลือก</button>
+                <button disabled={bulkReviewing} onClick={() => setSelectedOrderIds(new Set())} className="font-body text-base text-pencil/60 underline">ยกเลิกการเลือก</button>
+              </div>
+            )}
+            <table className="mt-5 w-full min-w-[680px] border-separate border-spacing-y-2 font-body text-lg">
+              <thead>
+                <tr className="text-left">
+                  <th className="px-3">
+                    {underReviewIds.length > 0 && (
+                      <input
+                        type="checkbox"
+                        aria-label="เลือกทั้งหมดที่รอตรวจ"
+                        checked={selectedOrderIds.size >= underReviewIds.length && underReviewIds.every((id) => selectedOrderIds.has(id))}
+                        onChange={toggleSelectAllUnderReview}
+                        className="h-5 w-5"
+                      />
+                    )}
+                  </th>
+                  <th>เลขคำสั่งซื้อ</th><th>จำนวน</th><th>ยอด</th><th>สถานะ / ตรวจสลิป</th>
+                </tr>
+              </thead>
               <tbody>{dashboardOrders.map((order) => (
                 <tr key={order.id} className="bg-white">
-                  <td className="border-y-2 border-l-2 border-pencil px-3 py-3">{order.orderNumber}</td>
+                  <td className="border-y-2 border-l-2 border-pencil px-3 py-3">
+                    {order.paymentStatus === 'under_review' && (
+                      <input
+                        type="checkbox"
+                        aria-label={`เลือกคำสั่งซื้อ ${order.orderNumber}`}
+                        checked={selectedOrderIds.has(order.id)}
+                        onChange={() => toggleOrderSelected(order.id)}
+                        className="h-5 w-5"
+                      />
+                    )}
+                  </td>
+                  <td className="border-y-2 border-pencil px-3">{order.orderNumber}</td>
                   <td className="border-y-2 border-pencil">{order.count} รูป</td>
                   <td className="border-y-2 border-pencil">{formatBahtExact(order.total)}</td>
                   <td className="border-y-2 border-r-2 border-pencil py-2">
