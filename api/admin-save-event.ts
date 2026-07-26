@@ -129,7 +129,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
   const now = new Date()
   const defaultSaleEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
-  const defaultPurge = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+  const defaultPurge = new Date(defaultSaleEnd.getTime() + 7 * 24 * 60 * 60 * 1000)
   const saleStartsAt = validIsoOrNull(body.saleStartsAt) || now.toISOString()
   const saleEndsAt = validIsoOrNull(body.saleEndsAt) || defaultSaleEnd.toISOString()
   const originalPurgeAt = validIsoOrNull(body.originalPurgeAt) || defaultPurge.toISOString()

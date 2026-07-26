@@ -99,7 +99,15 @@ const mockOrders: AdminOrder[] = [
 
 const defaultSaleStart = toDateTimeLocal(new Date())
 const defaultSaleEnd = addDaysToLocalDateTime(defaultSaleStart, 7)
-const defaultOriginalPurge = addDaysToLocalDateTime(defaultSaleStart, 30)
+const defaultOriginalPurge = addDaysToLocalDateTime(defaultSaleEnd, 7)
+const dayMilliseconds = 24 * 60 * 60 * 1000
+
+function daysBetween(start: string, end: string, fallback: number): number {
+  const startTime = new Date(start).getTime()
+  const endTime = new Date(end).getTime()
+  if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || endTime <= startTime) return fallback
+  return Math.max(1, Math.round((endTime - startTime) / dayMilliseconds))
+}
 
 export function AdminDashboard() {
   const [authenticated, setAuthenticated] = useState(runtimeConfig.dataMode === 'demo')
@@ -115,6 +123,8 @@ export function AdminDashboard() {
   const [saleStartsAt, setSaleStartsAt] = useState(defaultSaleStart)
   const [saleEndsAt, setSaleEndsAt] = useState(defaultSaleEnd)
   const [originalPurgeAt, setOriginalPurgeAt] = useState(defaultOriginalPurge)
+  const [saleDurationDays, setSaleDurationDays] = useState(7)
+  const [originalGraceDays, setOriginalGraceDays] = useState(7)
   const [contactLineUrl, setContactLineUrl] = useState('https://line.me/ti/p/~koake')
   const [contactPhone, setContactPhone] = useState('081-234-5678')
   const [originalsPurgedAt, setOriginalsPurgedAt] = useState('')
@@ -173,9 +183,14 @@ export function AdminDashboard() {
         setEventDate(payload.event.event_date || '')
         setVenue(payload.event.venue || '')
         setEventStatus(payload.event.status || 'active')
-        setSaleStartsAt(toDateTimeLocal(payload.event.sale_starts_at || new Date()))
-        setSaleEndsAt(toDateTimeLocal(payload.event.sale_ends_at || addDaysToLocalDateTime(defaultSaleStart, 7)))
-        setOriginalPurgeAt(toDateTimeLocal(payload.event.original_purge_at || addDaysToLocalDateTime(defaultSaleStart, 30)))
+        const nextSaleStart = toDateTimeLocal(payload.event.sale_starts_at || new Date())
+        const nextSaleEnd = toDateTimeLocal(payload.event.sale_ends_at || addDaysToLocalDateTime(nextSaleStart, 7))
+        const nextOriginalPurge = toDateTimeLocal(payload.event.original_purge_at || addDaysToLocalDateTime(nextSaleEnd, 7))
+        setSaleStartsAt(nextSaleStart)
+        setSaleEndsAt(nextSaleEnd)
+        setOriginalPurgeAt(nextOriginalPurge)
+        setSaleDurationDays(daysBetween(nextSaleStart, nextSaleEnd, 7))
+        setOriginalGraceDays(daysBetween(nextSaleEnd, nextOriginalPurge, 7))
         setOriginalsPurgedAt(payload.event.originals_purged_at || '')
         setContactLineUrl(payload.event.contact_line_url || '')
         setContactPhone(payload.event.contact_phone || '')
@@ -234,8 +249,11 @@ export function AdminDashboard() {
     setCategory('')
     setEventStatus('active')
     setSaleStartsAt(start)
-    setSaleEndsAt(addDaysToLocalDateTime(start, 7))
-    setOriginalPurgeAt(addDaysToLocalDateTime(start, 30))
+    const nextSaleEnd = addDaysToLocalDateTime(start, 7)
+    setSaleEndsAt(nextSaleEnd)
+    setOriginalPurgeAt(addDaysToLocalDateTime(nextSaleEnd, 7))
+    setSaleDurationDays(7)
+    setOriginalGraceDays(7)
     setOriginalsPurgedAt('')
     setAdminCategories([])
     setAdminPhotos([])
@@ -379,12 +397,36 @@ export function AdminDashboard() {
   }
 
   const applySaleWindow = (days: number) => {
-    const start = toDateTimeLocal(new Date())
-    setSaleStartsAt(start)
-    setSaleEndsAt(addDaysToLocalDateTime(start, days))
-    setOriginalPurgeAt(addDaysToLocalDateTime(start, Math.max(30, days + 7)))
+    const start = saleStartsAt || toDateTimeLocal(new Date())
+    const nextSaleEnd = addDaysToLocalDateTime(start, days)
+    setSaleDurationDays(days)
+    setSaleEndsAt(nextSaleEnd)
+    setOriginalPurgeAt(addDaysToLocalDateTime(nextSaleEnd, originalGraceDays))
     setOriginalsPurgedAt('')
     setEventStatus('active')
+  }
+
+  const changeSaleStart = (nextStart: string) => {
+    setSaleStartsAt(nextStart)
+    if (!nextStart) return
+    const nextSaleEnd = addDaysToLocalDateTime(nextStart, saleDurationDays)
+    setSaleEndsAt(nextSaleEnd)
+    setOriginalPurgeAt(addDaysToLocalDateTime(nextSaleEnd, originalGraceDays))
+    setOriginalsPurgedAt('')
+  }
+
+  const changeSaleEnd = (nextEnd: string) => {
+    setSaleEndsAt(nextEnd)
+    if (!nextEnd) return
+    setSaleDurationDays(daysBetween(saleStartsAt, nextEnd, saleDurationDays))
+    setOriginalPurgeAt(addDaysToLocalDateTime(nextEnd, originalGraceDays))
+    setOriginalsPurgedAt('')
+  }
+
+  const applyOriginalGrace = (days: number) => {
+    setOriginalGraceDays(days)
+    if (saleEndsAt) setOriginalPurgeAt(addDaysToLocalDateTime(saleEndsAt, days))
+    setOriginalsPurgedAt('')
   }
 
   const expireNow = () => {
@@ -396,9 +438,8 @@ export function AdminDashboard() {
     const base = new Date(saleEndsAt).getTime() > Date.now() ? saleEndsAt : toDateTimeLocal(new Date())
     const nextEnd = addHoursToLocalDateTime(base, hours)
     setSaleEndsAt(nextEnd)
-    if (new Date(originalPurgeAt).getTime() <= new Date(nextEnd).getTime()) {
-      setOriginalPurgeAt(addDaysToLocalDateTime(nextEnd, 7))
-    }
+    setSaleDurationDays(daysBetween(saleStartsAt, nextEnd, saleDurationDays))
+    setOriginalPurgeAt(addDaysToLocalDateTime(nextEnd, originalGraceDays))
     setEventStatus('reactivated')
   }
 
@@ -525,7 +566,7 @@ export function AdminDashboard() {
 
       <main className="mx-auto max-w-6xl px-6 py-10">
         <div className="mb-10 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div><span className="sticky-tag inline-block -rotate-1">หลังบ้านเวอร์ชัน 1.3.8 · Album Manager</span><h1 className="mt-4 font-heading text-5xl font-bold md:text-6xl">จัดการงานขายภาพ</h1></div>
+          <div><span className="sticky-tag inline-block -rotate-1">หลังบ้านเวอร์ชัน 1.3.9 · Album Manager</span><h1 className="mt-4 font-heading text-5xl font-bold md:text-6xl">จัดการงานขายภาพ</h1></div>
           <span className={`border-2 border-dashed border-pencil px-4 py-2 font-body text-lg ${runtimeConfig.dataMode === 'live' ? 'bg-[#d9f7df]' : 'bg-sticky'}`} style={{ borderRadius: radii.wobblySm }}>
             โหมด: {runtimeConfig.dataMode === 'live' ? 'LIVE เชื่อมระบบจริง' : 'DEMO ทดลองหน้าจอ'}
           </span>
@@ -611,23 +652,49 @@ export function AdminDashboard() {
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-2"><Clock3 size={25} strokeWidth={2.8} /><h3 className="font-heading text-3xl font-bold">อายุอัลบั้ม</h3></div>
                   <div className="flex flex-wrap gap-2">
-                    {[7, 14, 30].map((days) => <button type="button" key={days} onClick={() => applySaleWindow(days)} className="admin-mini-button">เปิดขาย {days} วัน</button>)}
+                    {[7, 14, 30].map((days) => (
+                      <button
+                        type="button"
+                        key={days}
+                        onClick={() => applySaleWindow(days)}
+                        className={`admin-mini-button ${saleDurationDays === days ? '!bg-marker !text-white' : ''}`}
+                      >
+                        เปิดขาย {days} วัน
+                      </button>
+                    ))}
                   </div>
+                </div>
+                <div className="mb-5 border-[3px] border-pencil bg-[#d9f7df] p-4 font-body text-lg" style={{ borderRadius: radii.wobblySm }}>
+                  <b>วิธีใช้:</b> เลือกวันและเวลาเริ่มขายก่อน แล้วกดอายุอัลบั้ม เช่น เริ่ม 3 สิงหาคม + เปิดขาย 7 วัน ระบบจะคำนวณวันปิดขายและวันลบ Original ให้อัตโนมัติ
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="font-body text-lg">สถานะ<select value={eventStatus} onChange={(event) => setEventStatus(event.target.value as EventLifecycleStatus)} className="admin-input"><option value="draft">DRAFT · ยังไม่เปิด</option><option value="active">ACTIVE · เปิดขาย</option><option value="expired">EXPIRED · หมดอายุ</option><option value="reactivated">REACTIVATED · เปิดใหม่ชั่วคราว</option><option value="archived">ARCHIVED · เหลือ Preview</option><option value="purged" disabled>PURGED · ระบบลบ Original ออนไลน์แล้ว</option></select></label>
-                  <label className="font-body text-lg">เริ่มเปิดขาย<input type="datetime-local" value={saleStartsAt} onChange={(event) => setSaleStartsAt(event.target.value)} className="admin-input" /></label>
-                  <label className="font-body text-lg">ปิดขายออนไลน์<input type="datetime-local" value={saleEndsAt} onChange={(event) => setSaleEndsAt(event.target.value)} className="admin-input" /></label>
-                  <label className="font-body text-lg">ลบ Original ออนไลน์<input type="datetime-local" value={originalPurgeAt} onChange={(event) => setOriginalPurgeAt(event.target.value)} className="admin-input" /></label>
+                  <label className="font-body text-lg">เริ่มเปิดขาย<input type="datetime-local" value={saleStartsAt} onChange={(event) => changeSaleStart(event.target.value)} className="admin-input" /></label>
+                  <label className="font-body text-lg">ปิดขายอัตโนมัติ <span className="text-sm text-pencil/55">(คำนวณจากวันเริ่ม)</span><input type="datetime-local" value={saleEndsAt} onChange={(event) => changeSaleEnd(event.target.value)} className="admin-input" /></label>
+                  <label className="font-body text-lg">ลบ Original อัตโนมัติ <span className="text-sm text-pencil/55">(Preview ยังอยู่)</span><input type="datetime-local" value={originalPurgeAt} onChange={(event) => { setOriginalPurgeAt(event.target.value); setOriginalsPurgedAt('') }} className="admin-input" /></label>
                   <label className="font-body text-lg">ลิงก์ LINE<input value={contactLineUrl} onChange={(event) => setContactLineUrl(event.target.value)} placeholder="https://line.me/..." className="admin-input" /></label>
                   <label className="font-body text-lg">เบอร์โทร<input value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} className="admin-input" /></label>
+                </div>
+                <div className="mt-4 flex flex-wrap items-center gap-2 font-body text-lg">
+                  <b>เก็บ Original ต่อหลังปิดขาย:</b>
+                  {[7, 14, 30].map((days) => (
+                    <button
+                      type="button"
+                      key={days}
+                      onClick={() => applyOriginalGrace(days)}
+                      className={`admin-mini-button ${originalGraceDays === days ? '!bg-pen !text-white' : ''}`}
+                    >
+                      {days} วัน
+                    </button>
+                  ))}
                 </div>
                 <div className="mt-4 flex flex-wrap gap-3">
                   <button type="button" onClick={expireNow} className="admin-mini-button !bg-[#ffe4e4]"><Archive size={18} /> ปิดขายตอนนี้</button>
                   <button type="button" onClick={() => extendSale(24)} className="admin-mini-button !bg-[#d9f7df]"><RefreshCw size={18} /> เปิดเพิ่ม 24 ชั่วโมง</button>
                 </div>
                 <div className="mt-4 border-2 border-dashed border-pencil bg-sticky/70 p-4 font-body text-lg" style={{ borderRadius: radii.wobblySm }}>
-                  <b>ลำดับอัตโนมัติ:</b> เปิดขายถึง {formatThaiDateTime(localDateTimeToIso(saleEndsAt))} → หน้าเว็บยังเก็บ Preview → Original ออนไลน์ถึง {formatThaiDateTime(localDateTimeToIso(originalPurgeAt))}
+                  <b>ตารางอัตโนมัติ:</b> เริ่มขาย {formatThaiDateTime(localDateTimeToIso(saleStartsAt))} → ปิดขาย {formatThaiDateTime(localDateTimeToIso(saleEndsAt))} → ลบ Original {formatThaiDateTime(localDateTimeToIso(originalPurgeAt))} โดย Preview ยังอยู่
+                  <p className="mt-1 text-pencil/60">ระบบปิดรับคำสั่งซื้อทันทีตามเวลาที่กำหนด และงาน Cron จะตรวจลบ Original อัตโนมัติทุกวันประมาณ 03:00 น.</p>
                   {originalsPurgedAt && <p className="mt-1 text-marker">ลบ Original ออนไลน์แล้วเมื่อ {formatThaiDateTime(originalsPurgedAt)}</p>}
                 </div>
               </div>
@@ -650,7 +717,7 @@ export function AdminDashboard() {
         <section className="mt-10">
           <SketchCard decoration="tape" className="p-6">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-              <div><div className="flex items-center gap-3"><CloudUpload size={30} strokeWidth={2.8} /><h2 className="font-heading text-4xl font-bold">อัปโหลดภาพไป ImageKit</h2></div><p className="mt-1 font-body text-xl text-pencil/65">ระบบอัปโหลด Original แบบ Private และสร้าง Preview พร้อมลายน้ำเป็นไฟล์แยก เพื่อให้ลบ Original หลัง 30 วันได้โดย Preview ยังอยู่</p></div>
+              <div><div className="flex items-center gap-3"><CloudUpload size={30} strokeWidth={2.8} /><h2 className="font-heading text-4xl font-bold">อัปโหลดภาพไป ImageKit</h2></div><p className="mt-1 font-body text-xl text-pencil/65">ระบบอัปโหลด Original แบบ Private และสร้าง Preview พร้อมลายน้ำเป็นไฟล์แยก โดย Original จะถูกลบอัตโนมัติตามอายุอัลบั้มที่ตั้งไว้และ Preview ยังอยู่</p></div>
               <div className="grid w-full gap-3 lg:max-w-sm">
                 <label className="font-body text-lg font-bold">อัลบั้มปลายทาง
                   <select

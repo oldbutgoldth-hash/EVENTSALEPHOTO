@@ -70,7 +70,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       return res.status(200).json({ ok: true, lifecycle, dueEvents: 0, report: [] })
     }
 
-    const client = new ImageKit({ privateKey: requiredEnv('IMAGEKIT_PRIVATE_KEY') })
+    const client = new ImageKit({ privateKey: requiredEnv('IMAGEKIT_PRIVATE_KEY').trim() })
     const report: Array<Record<string, unknown>> = []
 
     for (const event of dueEvents) {
