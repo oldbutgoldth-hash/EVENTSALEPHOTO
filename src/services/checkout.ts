@@ -7,7 +7,7 @@ export type CheckoutInput = {
   buyerPhone?: string
 }
 
-export async function createLiveCheckout(input: CheckoutInput): Promise<{ checkoutUrl: string; publicToken: string }> {
+export async function createLiveCheckout(input: CheckoutInput): Promise<{ checkoutUrl: string; publicToken: string; orderNumber: string }> {
   const response = await fetch('/api/create-order', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -21,10 +21,11 @@ export async function createLiveCheckout(input: CheckoutInput): Promise<{ checko
   const payload = (await response.json().catch(() => ({}))) as {
     checkoutUrl?: string
     publicToken?: string
+    orderNumber?: string
     error?: string
   }
   if (!response.ok || !payload.checkoutUrl || !payload.publicToken) {
     throw new Error(payload.error || 'สร้างรายการชำระเงินไม่สำเร็จ')
   }
-  return { checkoutUrl: payload.checkoutUrl, publicToken: payload.publicToken }
+  return { checkoutUrl: payload.checkoutUrl, publicToken: payload.publicToken, orderNumber: payload.orderNumber || '' }
 }

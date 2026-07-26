@@ -3,6 +3,7 @@ import { ArrowRight, LoaderCircle, Phone, ShieldCheck, Upload, X } from 'lucide-
 import type { PriceTier } from '../lib/pricing'
 import { formatBaht } from '../lib/pricing'
 import { isLiveMode } from '../lib/runtimeConfig'
+import { rememberOrder } from '../lib/orderMemory'
 import { createLiveCheckout } from '../services/checkout'
 import { SketchButton } from './SketchButton'
 import { SketchCard } from './SketchCard'
@@ -42,6 +43,7 @@ export function PromptPayModal({ open, tier, selectedIds, shareToken, onClose, o
         tier,
         buyerPhone: phone,
       })
+      rememberOrder({ token: result.publicToken, orderNumber: result.orderNumber, createdAt: new Date().toISOString() })
       window.location.assign(result.checkoutUrl)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'สร้างคำสั่งซื้อไม่สำเร็จ')

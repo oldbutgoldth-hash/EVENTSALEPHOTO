@@ -38,7 +38,10 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       src: asset.imagekit_original_path,
       signed: true,
       expiresIn: 300,
-      queryParameters: { 'ik-attachment': asset.original_filename },
+      // ImageKit only sends Content-Disposition: attachment when this is the
+      // literal string "true" — any other value (like a filename) is ignored
+      // and the browser opens the image inline instead of downloading it.
+      queryParameters: { 'ik-attachment': 'true' },
     })
     res.setHeader('cache-control', 'no-store')
     return res.redirect(302, signedUrl)

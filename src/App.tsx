@@ -17,6 +17,7 @@ import { DownloadPanel } from './components/DownloadPanel'
 import { PhotoCard } from './components/PhotoCard'
 import { PricingBoard } from './components/PricingBoard'
 import { OrderStatusPage } from './components/OrderStatusPage'
+import { PendingOrdersBanner } from './components/PendingOrdersBanner'
 import { PromptPayModal } from './components/PromptPayModal'
 import { SketchButton } from './components/SketchButton'
 import { SketchCard } from './components/SketchCard'
@@ -208,6 +209,7 @@ function StorefrontApp() {
       <main id="top">
         {catalogLoading && <div className="mx-auto mt-5 max-w-5xl border-[3px] border-pencil bg-sticky px-5 py-3 font-body text-xl shadow-hard" style={{ borderRadius: radii.wobblyMd }}>กำลังโหลดอัลบั้มจากระบบ…</div>}
         {catalogError && <div className="mx-auto mt-5 max-w-5xl border-[3px] border-marker bg-[#ffe4e4] px-5 py-3 font-body text-xl text-marker shadow-hard" style={{ borderRadius: radii.wobblyMd }}>{catalogError}</div>}
+        {isLiveMode && <PendingOrdersBanner />}
         <section id="event" className="relative mx-auto grid max-w-5xl gap-12 px-6 py-14 md:min-h-[calc(100vh-5rem)] md:grid-cols-[1.08fr_.92fr] md:items-center md:py-16">
           <div className="relative z-10">
             <span className="sticky-tag inline-block -rotate-2">สแกน QR แล้วเลือกรูปได้เลย</span>
