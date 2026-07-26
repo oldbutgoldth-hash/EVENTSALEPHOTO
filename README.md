@@ -56,8 +56,9 @@ npm run dev
 2. `supabase/migrations/20260724_event_photo_lifecycle_v120.sql`
 3. `supabase/migrations/20260726_payment_slips_v130.sql`
 4. `supabase/migrations/20260726_event_photo_hardening_v131.sql`
+5. `supabase/migrations/20260727_fix_order_rpc_pgcrypto.sql`
 
-Migration ลำดับที่ 3 จะสร้าง bucket `payment-slips` แบบ private และจำกัดไฟล์ไม่เกิน 6 MB ส่วนลำดับที่ 4 เพิ่มการตรวจสถานะสลิปแบบ atomic และป้องกันการอนุมัติเมื่อไฟล์ต้นฉบับไม่พร้อม
+Migration ลำดับที่ 3 จะสร้าง bucket `payment-slips` แบบ private และจำกัดไฟล์ไม่เกิน 6 MB ส่วนลำดับที่ 4 เพิ่มการตรวจสถานะสลิปแบบ atomic และป้องกันการอนุมัติเมื่อไฟล์ต้นฉบับไม่พร้อม ลำดับที่ 5 แก้ปัญหา `function gen_random_bytes(integer) does not exist` ตอนกดสั่งซื้อ โดยเลิกพึ่งพา pgcrypto ในฟังก์ชันสร้างออเดอร์
 
 ## Deploy
 
