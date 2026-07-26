@@ -481,7 +481,7 @@ export function AdminDashboard() {
 
       <main className="mx-auto max-w-6xl px-6 py-10">
         <div className="mb-10 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div><span className="sticky-tag inline-block -rotate-1">หลังบ้านเวอร์ชัน 1.3.6 · Album Manager</span><h1 className="mt-4 font-heading text-5xl font-bold md:text-6xl">จัดการงานขายภาพ</h1></div>
+          <div><span className="sticky-tag inline-block -rotate-1">หลังบ้านเวอร์ชัน 1.3.7 · Album Manager</span><h1 className="mt-4 font-heading text-5xl font-bold md:text-6xl">จัดการงานขายภาพ</h1></div>
           <span className={`border-2 border-dashed border-pencil px-4 py-2 font-body text-lg ${runtimeConfig.dataMode === 'live' ? 'bg-[#d9f7df]' : 'bg-sticky'}`} style={{ borderRadius: radii.wobblySm }}>
             โหมด: {runtimeConfig.dataMode === 'live' ? 'LIVE เชื่อมระบบจริง' : 'DEMO ทดลองหน้าจอ'}
           </span>

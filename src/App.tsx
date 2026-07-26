@@ -158,8 +158,16 @@ function StorefrontApp() {
             <BrandLogo priority className="h-16 sm:h-[74px] transition-transform duration-100 group-hover:-rotate-1" />
           </a>
 
-          <nav className="hidden items-center gap-7 font-body text-lg md:flex" aria-label="เมนูหลัก">
+          <nav className="hidden items-center gap-4 font-body text-lg lg:gap-6 md:flex" aria-label="เมนูหลัก">
             {navItems.map((item) => <a key={item.id} className="sketch-link" href={`#${item.id}`}>{item.label}</a>)}
+            <a
+              href="/?admin=1"
+              className="inline-flex min-h-12 items-center gap-2 border-[3px] border-pencil bg-sticky px-3 py-2 font-body text-lg font-bold shadow-hard transition-all duration-100 hover:-rotate-1 hover:bg-pen hover:text-white active:translate-x-1 active:translate-y-1 active:shadow-none"
+              style={{ borderRadius: radii.wobbly }}
+              aria-label="เข้าสู่หน้าแอดมิน"
+            >
+              <ShieldCheck size={19} strokeWidth={2.7} /> แอดมิน
+            </a>
             <SketchButton className="flex items-center gap-2 !px-4 !text-lg" onClick={() => document.querySelector('#gallery')?.scrollIntoView({ behavior: 'smooth' })}>
               <ShoppingBag size={19} strokeWidth={2.7} /> {saleOpen ? 'ซื้อภาพ' : 'ดูรหัสภาพ'}
             </SketchButton>
@@ -184,6 +192,14 @@ function StorefrontApp() {
                   {item.label}
                 </a>
               ))}
+              <a
+                href="/?admin=1"
+                onClick={() => setMobileMenu(false)}
+                className="mt-2 inline-flex min-h-12 items-center justify-center gap-2 border-[3px] border-pencil bg-sticky px-4 py-2 font-bold shadow-hard"
+                style={{ borderRadius: radii.wobbly }}
+              >
+                <ShieldCheck size={21} strokeWidth={2.8} /> เข้าสู่หน้าแอดมิน
+              </a>
             </div>
           </nav>
         )}
