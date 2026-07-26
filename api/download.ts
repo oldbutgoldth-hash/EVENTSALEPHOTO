@@ -1,4 +1,4 @@
-import ImageKit from '@imagekit/nodejs'
+import crypto from 'node:crypto'
 import { queryValue, requiredEnv, supabaseRest, type ApiRequest, type ApiResponse } from '../server/utils.js'
 
 type OrderRow = { id: string; payment_status: string; download_expires_at: string | null }
@@ -8,6 +8,19 @@ type AssetRow = {
   original_filename: string
   original_storage_status: 'online' | 'purging' | 'purged' | 'error'
   original_purged_at: string | null
+}
+
+// Built by hand, following ImageKit's documented signing algorithm exactly
+// (https://imagekit.io/docs/media-delivery-basic-security#pseudo-code-to-generate-signed-url).
+// The @imagekit/nodejs SDK's helper.buildSrc({ queryParameters: { 'ik-attachment': 'true' } })
+// combination produced a malformed response from ImageKit's edge for every file (ERR_INVALID_RESPONSE
+// in the browser), so this bypasses the SDK for this one endpoint instead of guessing at its internals.
+function buildSignedAttachmentUrl(urlEndpoint: string, filePath: string, privateKey: string, expiresInSeconds: number): string {
+  const endpoint = urlEndpoint.replace(/\/+$/, '')
+  const path = filePath.startsWith('/') ? filePath.slice(1) : filePath
+  const expiryTimestamp = Math.floor(Date.now() / 1000) + expiresInSeconds
+  const signature = crypto.createHmac('sha1', privateKey).update(`${path}${expiryTimestamp}`).digest('hex')
+  return `${endpoint}/${path}?ik-t=${expiryTimestamp}&ik-s=${signature}&ik-attachment=true`
 }
 
 export default async function handler(req: ApiRequest, res: ApiResponse) {
@@ -32,17 +45,12 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     }
     if (asset.original_storage_status === 'purging') return res.status(409).json({ error: 'ORIGINAL_MAINTENANCE_TRY_AGAIN' })
 
-    const client = new ImageKit({ privateKey: requiredEnv('IMAGEKIT_PRIVATE_KEY') })
-    const signedUrl = client.helper.buildSrc({
-      urlEndpoint: requiredEnv('IMAGEKIT_URL_ENDPOINT'),
-      src: asset.imagekit_original_path,
-      signed: true,
-      expiresIn: 300,
-      // ImageKit only sends Content-Disposition: attachment when this is the
-      // literal string "true" — any other value (like a filename) is ignored
-      // and the browser opens the image inline instead of downloading it.
-      queryParameters: { 'ik-attachment': 'true' },
-    })
+    const signedUrl = buildSignedAttachmentUrl(
+      requiredEnv('IMAGEKIT_URL_ENDPOINT'),
+      asset.imagekit_original_path,
+      requiredEnv('IMAGEKIT_PRIVATE_KEY'),
+      300,
+    )
     res.setHeader('cache-control', 'no-store')
     return res.redirect(302, signedUrl)
   } catch (error) {
