@@ -1,0 +1,49 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "installCommand": "npm ci --include=dev",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/api/admin-login",
+      "destination": "/api/admin-auth?action=login"
+    },
+    {
+      "source": "/api/admin-logout",
+      "destination": "/api/admin-auth?action=logout"
+    },
+    {
+      "source": "/api/admin-session",
+      "destination": "/api/admin-auth?action=session"
+    },
+    {
+      "source": "/api/imagekit-auth",
+      "destination": "/api/admin-auth?action=imagekit"
+    },
+    {
+      "source": "/api/payment-slip-upload-url",
+      "destination": "/api/payment-slip?action=upload-url"
+    },
+    {
+      "source": "/api/payment-slip-submit",
+      "destination": "/api/payment-slip?action=submit"
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "query",
+          "key": "event"
+        }
+      ],
+      "destination": "/api/catalog?meta=1"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron-lifecycle",
+      "schedule": "0 20 * * *"
+    }
+  ]
+}

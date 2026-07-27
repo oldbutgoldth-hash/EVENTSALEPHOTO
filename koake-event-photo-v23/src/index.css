@@ -1,0 +1,104 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Patrick Hand', cursive;
+  color: #2d2d2d;
+  background: #fdfbf7;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: #fdfbf7;
+  background-image: radial-gradient(#e5e0d8 1.1px, transparent 1.1px);
+  background-size: 24px 24px;
+}
+button, input { font: inherit; }
+a { color: inherit; text-decoration: none; }
+::selection { background: #ff4d4d; color: white; }
+
+@layer components {
+  .sticky-tag {
+    @apply border-2 border-pencil bg-sticky px-4 py-2 font-body text-lg font-bold shadow-[3px_3px_0_#2d2d2d];
+    border-radius: 12px 5px 13px 7px / 8px 14px 6px 13px;
+  }
+  .sketch-pill {
+    @apply inline-flex min-h-11 items-center gap-2 border-2 border-dashed border-pencil bg-white px-4 py-2 shadow-[2px_2px_0_#2d2d2d];
+    border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
+  }
+  .sketch-link {
+    @apply relative py-1 transition-transform duration-100 hover:-rotate-1;
+  }
+  .sketch-link::after {
+    content: '';
+    @apply absolute bottom-0 left-0 h-[3px] w-0 bg-marker transition-all duration-100;
+    border-radius: 50%;
+  }
+  .sketch-link:hover::after { width: 100%; }
+  .footer-heading {
+    @apply inline-block border-b-[3px] border-dashed border-marker font-heading text-2xl font-bold;
+  }
+}
+
+.tape {
+  position: absolute;
+  z-index: 10;
+  top: -13px;
+  left: 50%;
+  width: 92px;
+  height: 28px;
+  transform: translateX(-50%) rotate(-2deg);
+  background: rgba(190, 186, 177, 0.72);
+  clip-path: polygon(3% 7%, 97% 0, 94% 93%, 6% 100%);
+}
+.tack {
+  position: absolute;
+  z-index: 10;
+  top: -10px;
+  left: 50%;
+  width: 21px;
+  height: 21px;
+  transform: translateX(-50%);
+  border: 2px solid #2d2d2d;
+  border-radius: 47% 53% 42% 58% / 59% 46% 54% 41%;
+  background: #ff4d4d;
+  box-shadow: 2px 3px 0 rgba(45,45,45,.35);
+}
+.qr-pattern {
+  background-color: #fff;
+  background-image:
+    linear-gradient(90deg, #2d2d2d 25%, transparent 25%, transparent 50%, #2d2d2d 50%, #2d2d2d 75%, transparent 75%),
+    linear-gradient(#2d2d2d 25%, transparent 25%, transparent 50%, #2d2d2d 50%, #2d2d2d 75%, transparent 75%);
+  background-size: 22px 22px;
+  box-shadow: inset 0 0 0 13px white;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@layer components {
+  .admin-input {
+    @apply mt-1 min-h-12 w-full border-[3px] border-pencil bg-white px-4 py-2 font-body text-lg shadow-[3px_3px_0_#2d2d2d] outline-none placeholder:text-pencil/35 focus:border-pen focus:ring-2 focus:ring-pen/20;
+    border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
+  }
+  .admin-mini-button {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 border-2 border-pencil bg-white px-4 font-body text-lg font-bold shadow-[2px_2px_0_#2d2d2d] transition-transform hover:-rotate-1 active:translate-x-0.5 active:translate-y-0.5 active:shadow-none;
+    border-radius: 16px 5px 18px 7px / 7px 18px 6px 16px;
+  }
+}
+
+@media (max-width: 767px) {
+  #event h1 { overflow-wrap: anywhere; }
+}
