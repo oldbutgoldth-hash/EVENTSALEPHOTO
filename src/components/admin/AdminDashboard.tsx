@@ -8,6 +8,7 @@ import {
   Copy,
   Database,
   ExternalLink,
+  Facebook,
   Image as ImageIcon,
   Images,
   KeyRound,
@@ -19,6 +20,7 @@ import {
   QrCode,
   RefreshCw,
   Save,
+  Send,
   Settings2,
   ShoppingCart,
   Trash2,
@@ -152,6 +154,17 @@ export function AdminDashboard() {
 
   const eventUrl = `${runtimeConfig.siteUrl}/?event=${encodeURIComponent(shareToken || eventSlug)}`
   const completeCount = uploads.filter((item) => item.status === 'done').length
+
+  // Opens the platform's own share dialog in a small popup instead of
+  // navigating the admin away from the dashboard. Facebook/LINE both read the
+  // Open Graph title/description/image already generated for this album link
+  // (see the share-preview feature), so the shared post looks right without
+  // any extra work here.
+  const openShareWindow = (shareUrl: string) => {
+    window.open(shareUrl, 'koake-share', 'width=600,height=520,noopener,noreferrer')
+  }
+  const shareEventToFacebook = () => openShareWindow(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(eventUrl)}`)
+  const shareEventToLine = () => openShareWindow(`https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(eventUrl)}`)
 
   useEffect(() => {
     if (runtimeConfig.dataMode !== 'live') return
@@ -880,6 +893,10 @@ export function AdminDashboard() {
             <div className="mt-4 flex flex-wrap justify-center gap-3">
               <button onClick={() => navigator.clipboard?.writeText(eventUrl)} className="admin-mini-button"><Copy size={18} /> คัดลอก</button>
               <a href={eventUrl} target="_blank" rel="noreferrer" className="admin-mini-button"><ExternalLink size={18} /> เปิดหน้า</a>
+            </div>
+            <div className="mt-3 flex flex-wrap justify-center gap-3 border-t-2 border-dashed border-pencil/30 pt-4">
+              <button type="button" onClick={shareEventToFacebook} className="admin-mini-button !bg-[#e7f0ff]" title="เปิดหน้าต่างแชร์ลิงก์อัลบั้มนี้ไปโพสต์บน Facebook"><Facebook size={18} /> แชร์ไป Facebook</button>
+              <button type="button" onClick={shareEventToLine} className="admin-mini-button !bg-[#e3ffe9]" title="เปิดหน้าต่างแชร์ลิงก์อัลบั้มนี้ไปที่ LINE"><Send size={18} /> แชร์ไป LINE</button>
             </div>
           </SketchCard>
         </section>
