@@ -326,18 +326,21 @@ function StorefrontApp() {
               <h2 className="font-heading text-3xl font-bold md:text-4xl">วิธีซื้อ · 3 ขั้นตอน</h2>
               <p className="font-body text-lg text-pen">ง่ายเหมือนเลือกภาพในมือถือ</p>
             </div>
-            <div className="flex flex-col gap-4 border-2 border-dashed border-pencil/40 bg-white p-4 sm:flex-row sm:items-center sm:gap-3" style={{ borderRadius: radii.wobblyMd }}>
+            <div className="flex flex-col gap-4 border-2 border-dashed border-pencil/40 bg-white p-4 sm:flex-row sm:items-start sm:gap-3" style={{ borderRadius: radii.wobblyMd }}>
               {[
-                { number: '1', title: 'ค้นหารูป' },
-                { number: '2', title: 'เลือกแพ็ก' },
-                { number: '3', title: 'จ่ายแล้วโหลด' },
+                { number: '1', title: 'เลือกอัลบั้ม', caption: 'ค้นหารูปงานที่ต้องการ' },
+                { number: '2', title: 'กด + เลือกรูป', caption: 'กด + ที่รูปกี่รูปก็ได้ ระบบคำนวณยอดให้อัตโนมัติ' },
+                { number: '3', title: 'สแกน QR แล้วชำระ', caption: 'โอนให้ตรงยอดเป๊ะ แนบสลิปในเว็บ ระบบเปิดลิงก์ดาวน์โหลดให้ทันที' },
               ].map((step, index, arr) => (
-                <div key={step.number} className="flex flex-1 items-center gap-3">
+                <div key={step.number} className="flex flex-1 items-start gap-3">
                   <span className="grid h-11 w-11 shrink-0 place-items-center border-2 border-pencil bg-sticky font-heading text-lg font-bold" style={{ borderRadius: radii.blob }}>
                     {step.number}
                   </span>
-                  <p className="font-body text-lg font-bold">{step.title}</p>
-                  {index < arr.length - 1 && <span className="hidden h-[2px] flex-1 bg-pencil/25 sm:block" aria-hidden="true" />}
+                  <div>
+                    <p className="font-body text-lg font-bold leading-tight">{step.title}</p>
+                    <p className="font-body text-base leading-snug text-pencil/60">{step.caption}</p>
+                  </div>
+                  {index < arr.length - 1 && <span className="hidden h-[2px] flex-1 self-center bg-pencil/25 sm:block" aria-hidden="true" />}
                 </div>
               ))}
             </div>
